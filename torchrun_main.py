@@ -10,6 +10,8 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
+from adam_mini import Adam_mini
+
 import transformers
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
 from transformers import LlamaForCausalLM as HF_LlamaForCausalLM
@@ -28,7 +30,9 @@ from peft_pretraining.modeling_llama import LlamaForCausalLM
 import bitsandbytes as bnb
 
 import matplotlib.pyplot as plt
+
 transformers.logging.set_verbosity_error()
+
 
 def parse_args(args):
     parser = argparse.ArgumentParser()
@@ -61,20 +65,23 @@ def parse_args(args):
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--name", type=str, default="test")
-    parser.add_argument("--grad_clipping", type=float, default=1.0)   
+    parser.add_argument("--grad_clipping", type=float, default=1.0)
     parser.add_argument("--run_name", type=str, default="default")
-    # beta1 for adafactor
-    parser.add_argument("--beta1", type=float, default=0.0)
-    
+    # optim parameters
+    parser.add_argument("--beta1", type=float, default=0.9)
+    parser.add_argument("--beta2", type=float, default=0.999)
+    parser.add_argument("--momentum", type=float, default=0.9)
+    parser.add_argument("--eps", type=float, default=1e-8)
+
     # GaLore parameters
     parser.add_argument("--rank", type=int, default=128)
     parser.add_argument("--update_proj_gap", type=int, default=50)
     parser.add_argument("--galore_scale", type=float, default=1.0)
     parser.add_argument("--proj_type", type=str, default="std")
-    
+
     # disable ddp, single_gpu
     parser.add_argument("--single_gpu", default=False, action="store_true")
-    
+
     args = parser.parse_args(args)
 
     args = args_utils.check_args_torchrun_main(args)
@@ -84,7 +91,7 @@ def parse_args(args):
 @torch.no_grad()
 def evaluate_model(model, preprocess_batched, pad_idx, global_rank, world_size, device, batch_size):
     _time = time.time()
-    val_data = datasets.load_dataset("c4", "en", split="validation", streaming=True, trust_remote_code=True) #DGX
+    val_data = datasets.load_dataset("c4", "en", split="validation", streaming=True, trust_remote_code=True)  # DGX
     val_data = val_data.shuffle(seed=42)
     logger.info(f"Loaded validation dataset in {time.time() - _time:.2f} seconds")
 
@@ -123,8 +130,9 @@ def evaluate_model(model, preprocess_batched, pad_idx, global_rank, world_size, 
     gathered_losses = [torch.zeros_like(total_loss) for _ in range(world_size)]
     dist.all_gather(gathered_losses, total_loss)
     total_loss = sum([t.item() for t in gathered_losses]) / world_size
+    perplexity = np.exp(total_loss)
 
-    return total_loss, evaluated_on_tokens
+    return total_loss, evaluated_on_tokens, perplexity
 
 
 def main(args):
@@ -156,24 +164,22 @@ def main(args):
 
     # turn off logger
     if global_rank != 0: logger.remove()
-            
+
     # initialize wandb without config (it is passed later)
     if global_rank == 0:
         wandb.init(project="cod", name=args.run_name)
-        
+
     logger.info(f"Using dist with rank {global_rank} (only rank 0 will log)")
     logger.info("*" * 40)
     logger.info(f"Starting training with the arguments")
     for k, v in vars(args).items():
         logger.info(f"{k:30} {v}")
     logger.info("*" * 40)
-    
+
     data = datasets.load_dataset("allenai/c4", "en", split="train", streaming=True)
 
+    seed_for_shuffle = 32
 
-
-    seed_for_shuffle = 32 
-    
     logger.info(f"Shuffling data with seed {seed_for_shuffle}")
     data: datasets.Dataset = data.shuffle(seed=seed_for_shuffle)
     if not args.single_gpu:
@@ -216,17 +222,18 @@ def main(args):
     if args.continue_from is not None:
         logger.info("*" * 40)
         logger.info(f"Loading model from {args.continue_from}")
-        
+
         from safetensors.torch import load_file
         state_dict = load_file(f"{args.continue_from}/model.safetensors")
         model.load_state_dict(state_dict)
-        
+
         # checkpoint_path = os.path.join(args.continue_from, "pytorch_model.bin")
         # model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
         logger.info(f"Model successfully loaded (strict=True policy)")
 
         if os.path.exists(os.path.join(args.continue_from, "training_state.json")):
-            logger.info(f"Loading training state like global_step, update_step, and tokens_seen from {args.continue_from}")
+            logger.info(
+                f"Loading training state like global_step, update_step, and tokens_seen from {args.continue_from}")
             with open(os.path.join(args.continue_from, "training_state.json")) as f:
                 _old_state = json.load(f)
             global_step = _old_state["global_step"]
@@ -241,7 +248,6 @@ def main(args):
         else:
             logger.warning(f"Did not find training state in {args.continue_from}, global step will start from zero")
         logger.info("*" * 40)
-
 
     if args.dtype in ["bf16", "bfloat16"]:
         model = model.to(device=device, dtype=torch.bfloat16)
@@ -263,11 +269,11 @@ def main(args):
 
     if global_rank == 0:
         wandb.config.update(run_config, allow_val_change=True)
-        wandb.save(os.path.abspath(__file__), policy="now") # save current script
+        wandb.save(os.path.abspath(__file__), policy="now")  # save current script
         # fix tqdm visual length to 80 so that the progress bar
         # doesn't jump around when changing from external display to laptop
         pbar = tqdm(total=args.num_training_steps - update_step, desc="Update steps", ncols=80)
-    
+
     if 'galore' in args.optimizer.lower():
         # make parameters with "rank" to a single group, if param_name has "mlp" or "attn"
         galore_params = []
@@ -278,16 +284,17 @@ def main(args):
 
             if not any(target_key in module_name for target_key in target_modules_list):
                 continue
-            
+
             print('enable GaLore for weights in module: ', module_name)
             galore_params.append(module.weight)
         id_galore_params = [id(p) for p in galore_params]
         # make parameters without "rank" to another group
         regular_params = [p for p in model.parameters() if id(p) not in id_galore_params]
         # then call galore_adamw
-        param_groups = [{'params': regular_params}, 
-                        {'params': galore_params, 'rank': args.rank, 'update_proj_gap': args.update_proj_gap, 'scale': args.galore_scale, 'proj_type': args.proj_type}]
-        
+        param_groups = [{'params': regular_params},
+                        {'params': galore_params, 'rank': args.rank, 'update_proj_gap': args.update_proj_gap,
+                         'scale': args.galore_scale, 'proj_type': args.proj_type}]
+
     # print params and trainable params
     logger.info(f"\n{model}\n")
     logger.info(f"Total params: {sum(p.numel() for p in model.parameters()) / 1_000_000:.2f}M")
@@ -295,10 +302,33 @@ def main(args):
     if 'galore' in args.optimizer.lower():
         logger.info(f"Total params with GaLore enabled: {sum(p.numel() for p in galore_params) / 1_000_000:.2f}M")
     logger.info(f"Saving model to {args.save_dir} every {args.save_every} update steps")
-    
+
     layer_wise_flag = False
+    # if args.optimizer.lower() == "adam":
+    #     optimizer = torch.optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    # else:
+    #     raise ValueError(f"Optimizer {args.optimizer} not supported")
     if args.optimizer.lower() == "adam":
-        optimizer = torch.optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = torch.optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
+                                     betas=(args.beta1, args.beta2), eps=args.eps)
+    elif args.optimizer.lower() == 'sgd':
+        optimizer = torch.optim.SGD(trainable_params, lr=args.lr, momentum=args.momentum,
+                                    weight_decay=args.weight_decay, nesterov=True)
+    elif args.optimizer.lower() == 'adamw':
+        optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
+                                      betas=(args.beta1, args.beta2), eps=args.eps)
+    elif args.optimizer.lower() == 'adam-mini':
+        #TODO: make sure it works
+        optimizer = Adam_mini(
+            named_parameters=model.named_parameters(),
+            lr=args.lr,
+            betas=(args.beta1, args.beta2),
+            eps=args.eps,
+            weight_decay=args.weight_decay,
+            dim=model_config.dim,
+            n_heads=model_config.n_heads,
+            n_kv_heads=model_config.n_kv_heads,  # default to be none
+        )
     else:
         raise ValueError(f"Optimizer {args.optimizer} not supported")
 
@@ -356,7 +386,7 @@ def main(args):
         if args.grad_clipping != 0.0: torch.nn.utils.clip_grad_norm_(trainable_params, args.grad_clipping)
 
         if global_rank == 0: pbar.update(1)
-        
+
         if not layer_wise_flag:
             optimizer.step()
             scheduler.step()
@@ -392,7 +422,7 @@ def main(args):
             }
             with open(f"{current_model_directory}/training_state.json", "w") as f:
                 json.dump(training_state_checkpoint, f, indent=4)
-                
+
             # save wandb related info
             wandb_info = {
                 "wandb_id": wandb.run.id,
@@ -403,14 +433,15 @@ def main(args):
         # evaluation
         if update_step % args.eval_every == 0:
             logger.info(f"Performing evaluation at step {update_step}")
-            total_loss, evaluated_on_tokens = evaluate_model(
+            total_loss, evaluated_on_tokens, perplexity = evaluate_model(
                 model, preprocess_batched, pad_idx, global_rank, world_size, device, args.batch_size
             )
             if global_rank == 0:
                 wandb.log({
                     "final_eval_loss": total_loss,
                     "final_eval_tokens": evaluated_on_tokens,
-                    },
+                    "perplexity": perplexity,
+                },
                     step=global_step,
                 )
             logger.info(f"Eval loss at step {update_step}: {total_loss}")
@@ -432,7 +463,7 @@ def main(args):
                 "throughput_tokens": tokens_in_update / update_time,
                 "throughput_examples": args.total_batch_size / update_time,
                 "throughput_batches": batches_in_update / update_time,
-                },
+            },
                 step=global_step,
             )
         update_time = time.time()
@@ -474,10 +505,11 @@ def main(args):
     logger.info("Running final evaluation")
     model.eval()
     del loss, optimizer, scheduler
-    import gc; gc.collect()
+    import gc;
+    gc.collect()
     torch.cuda.empty_cache()
 
-    total_loss, evaluated_on_tokens = evaluate_model(
+    total_loss, evaluated_on_tokens, perplexity = evaluate_model(
         model, preprocess_batched, pad_idx, global_rank, world_size, device, args.batch_size
     )
 
@@ -485,7 +517,8 @@ def main(args):
         wandb.log({
             "final_eval_loss": total_loss,
             "final_eval_tokens": evaluated_on_tokens,
-            },
+            "perplexity": perplexity,
+        },
             step=global_step,
         )
         logger.info(f"Final eval loss: {total_loss}")
