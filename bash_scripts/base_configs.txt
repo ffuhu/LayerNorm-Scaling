@@ -1,0 +1,3 @@
+# optimizer      weight_decay           lr           scheduler       num_training_steps        batch_size       total_batch_size          seed      eval_hessian
+
+adam

@@ -16,6 +16,9 @@ import transformers
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
 from transformers import LlamaForCausalLM as HF_LlamaForCausalLM
 
+from optims.adamw import AdamW
+from torch.optim.sgd import SGD
+
 import datasets
 import datasets.distributed
 import wandb
@@ -31,7 +34,7 @@ import bitsandbytes as bnb
 
 import matplotlib.pyplot as plt
 
-transformers.logging.set_verbosity_error()
+#transformers.logging.set_verbosity_error()
 
 
 def parse_args(args):
@@ -81,6 +84,10 @@ def parse_args(args):
 
     # disable ddp, single_gpu
     parser.add_argument("--single_gpu", default=False, action="store_true")
+
+    # to save weights and grads
+    parser.add_argument("--save_every_N_steps", type=int, default=None)
+    parser.add_argument("--layers_to_save", type=str, nargs='+', default=[])
 
     args = parser.parse_args(args)
 
@@ -136,6 +143,10 @@ def evaluate_model(model, preprocess_batched, pad_idx, global_rank, world_size, 
 
 
 def main(args):
+
+    # set saving dir
+    args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_{args.weight_decay}wd_seed{args.seed}")
+
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -145,6 +156,8 @@ def main(args):
     local_rank = int(os.environ["LOCAL_RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     torch.cuda.set_device(local_rank)
+
+    logger.add(os.path.join(args.save_dir, 'log.txt'))
 
     logger.info(f"Global rank {global_rank}, local rank {local_rank}, device: {torch.cuda.current_device()}")
 
@@ -315,8 +328,13 @@ def main(args):
         optimizer = torch.optim.SGD(trainable_params, lr=args.lr, momentum=args.momentum,
                                     weight_decay=args.weight_decay, nesterov=True)
     elif args.optimizer.lower() == 'adamw':
-        optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
-                                      betas=(args.beta1, args.beta2), eps=args.eps)
+        # optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
+        #                               betas=(args.beta1, args.beta2), eps=args.eps)
+        optimizer = AdamW(model.named_parameters(), lr=args.lr, weight_decay=args.weight_decay,
+                          betas=(args.beta1, args.beta2), eps=args.eps,
+                          save_every_N_steps=args.save_every_N_steps,
+                          layers_to_save=args.layers_to_save,
+                          log_folder=args.save_dir)
     elif args.optimizer.lower() == 'adam-mini':
         #TODO: make sure it works
         optimizer = Adam_mini(
@@ -329,6 +347,7 @@ def main(args):
             n_heads=model_config.n_heads,
             n_kv_heads=model_config.n_kv_heads,  # default to be none
         )
+
     else:
         raise ValueError(f"Optimizer {args.optimizer} not supported")
 
@@ -364,7 +383,7 @@ def main(args):
         global_step += 1
         local_step += 1
         if update_step > args.num_training_steps:
-            logger.info(f"Reached max number of update steps (f{args.num_training_steps}). Stopping training.")
+            logger.info(f"Reached max number of update steps ({args.num_training_steps}). Stopping training.")
             print(f"Rank {global_rank} stopping training.")
             break
 
@@ -475,7 +494,7 @@ def main(args):
     if global_rank == 0: pbar.close()
 
     current_model_directory = f"{args.save_dir}/model_{update_step}"
-    if global_rank == 0 and not os.path.exists(current_model_directory):
+    if global_rank == 0: # and not os.path.exists(current_model_directory):
         logger.info(f"Saving model and optimizer to {current_model_directory}, update step {update_step}")
         os.makedirs(args.save_dir, exist_ok=True)
         model.module.save_pretrained(current_model_directory)
