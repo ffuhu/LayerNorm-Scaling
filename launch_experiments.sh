@@ -19,7 +19,7 @@ export LIBRARY_PATH="/usr/local/cuda/lib64:$LIBRARY_PATH"
 export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 
 source /projects/0/prjs1462/miniforge3/bin/activate
-conda activate spam
+conda activate ew
 
 # Define the set of learning rates and normalization types
 #norm_type="LNS" #$1
@@ -27,86 +27,122 @@ conda activate spam
 export NORM_TYPE="LNS" #$norm_type
 #export POST_NUM=3 #$2
 
+export RANK=0
+export LOCAL_RANK=0
+export WORLD_SIZE=1
 
+export MASTER_ADDR='localhost'
+export MASTER_PORT=29500
 
 #TODO: make if else to run sgd, adam and adam mini depending on $1 for slurm array
 
-case "$1" in
+case "$SLURM_ARRAY_TASK_ID" in
   1)
-    echo "You chose ONE."
     optimizer="adamw"
     weight_decay=0.1
     learning_rate=1e-4
     ;;
   2)
-    echo "You chose TWO."
     optimizer="adamw"
     weight_decay=0.1
     learning_rate=5e-4
     ;;
   3)
-    echo "You chose THREE."
     optimizer="adamw"
     weight_decay=0.1
     learning_rate=1e-3
     ;;
   4)
-    echo "You chose FOUR."
     optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     ;;
+  5)
+    optimizer="adam_mini"
+    weight_decay=0.1
+    learning_rate=1e-4
+    ;;
+  6)
+    optimizer="adam_mini"
+    weight_decay=0.1
+    learning_rate=5e-4
+    ;;
+  7)
+    optimizer="adam_mini"
+    weight_decay=0.1
+    learning_rate=1e-3
+    ;;
+  8)
+    optimizer="adam_mini"
+    weight_decay=0.1
+    learning_rate=3e-3
+    ;;
+  9)
+    optimizer="sgd"
+    weight_decay=0.0005
+    learning_rate=1e-2
+    ;;
+  10)
+    optimizer="sgd"
+    weight_decay=0.0005
+    learning_rate=5e-2
+    ;;
+  11)
+    optimizer="sgd"
+    weight_decay=0.0005
+    learning_rate=1e-1
+    ;;
+  12)
+    optimizer="sgd"
+    weight_decay=0.0005
+    learning_rate=5e-1
+    ;;
   *)
-    echo "Number not recognized. Please enter 1, 2, or 3."
+    echo "Number not recognized. Please enter 1-8."
     exit
     ;;
 esac
 
-
 # Function to run a single training task
 echo "Training with $optimizer (learning rate: $learning_rate, weight decay: $weight_weight_decay) norm type: $NORM_TYPE on GPU $gpu"
 
-#conda run torchrun --nproc_per_node 1 --master_port=29510 torchrun_main.py \
-#    --model_config configs/llama_130m.json \
-#    --lr $learning_rate \
-#    --batch_size 32 \
-#    --total_batch_size 64 \
-#    --num_training_steps 160000 \
-#    --warmup_steps 2000 \
-#    --weight_decay 0 \
-#    --dtype bfloat16 \
-#    --eval_every 1000 \
-#    --save_every 1000 \
-#    --optimizer $optimizer \
-#    --weight_decay $weight_decay \
-#    --grad_clipping 0.0 \
-#    --run_name "ew_130m_save0-5-11_${norm_type}_lr${learning_rate}" \
-#    --save_dir "logs" \
-#    --layers_to_save layers.0 layers.5 layers.11 \
-#    --save_every_N_steps 10 \
-#    --beta1 0.98 \
-#    --weight_decay $weight_decay
-
-echo "torchrun --nproc_per_node 1 --master_port=29510 torchrun_main.py \
+conda run -n ew torchrun --nproc_per_node 1 --master_port=29510 torchrun_main.py \
     --model_config configs/llama_130m.json \
     --lr $learning_rate \
     --batch_size 32 \
     --total_batch_size 64 \
     --num_training_steps 160000 \
     --warmup_steps 2000 \
-    --weight_decay 0 \
     --dtype bfloat16 \
-    --eval_every 1000 \
-    --save_every 1000 \
+    --eval_every 10000 \
+    --save_every 10000 \
     --optimizer $optimizer \
+    --beta1 0.98 \
     --weight_decay $weight_decay \
     --grad_clipping 0.0 \
-    --run_name "ew_130m_save0-5-11_${norm_type}_lr${learning_rate}" \
+    --run_name "ew_130m_save0-5-11_${norm_type}" \
     --save_dir "logs" \
     --layers_to_save layers.0 layers.5 layers.11 \
-    --save_every_N_steps 10 \
+    --save_every_N_steps 10
+
+echo "run -n ew torchrun --nproc_per_node 1 --master_port=29510 torchrun_main.py \
+    --model_config configs/llama_130m.json \
+    --lr $learning_rate \
+    --batch_size 32 \
+    --total_batch_size 64 \
+    --num_training_steps 160000 \
+    --warmup_steps 2000 \
+    --dtype bfloat16 \
+    --eval_every 10000 \
+    --save_every 10000 \
+    --optimizer $optimizer \
     --beta1 0.98 \
-    --weight_decay $weight_decay"
+    --weight_decay $weight_decay \
+    --grad_clipping 0.0 \
+    --run_name "ew_130m_save0-5-11_${norm_type}" \
+    --save_dir "logs" \
+    --layers_to_save layers.0 layers.5 layers.11 \
+    --save_every_N_steps 10 "
 
 
 

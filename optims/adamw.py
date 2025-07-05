@@ -71,7 +71,7 @@ class AdamW(Optimizer):
         defaults = {"lr": lr, "betas": betas, "eps": eps, "weight_decay": weight_decay, "correct_bias": correct_bias}
         super().__init__(params, defaults)
 
-        # for gradient spike detection
+        # for gradient and weight saving
         self.grad_dict = {}
         self.p_dict = {}
         self.lr_dict = {}
@@ -85,19 +85,27 @@ class AdamW(Optimizer):
         self.save_every_N_steps = save_every_N_steps
         self.layers_to_save = layers_to_save
 
-        self.saving_schedule = {
-            0: 2_000,       # 10
-            20_000: 4_000,  # 5
-            40_000: 8_000,  # 5
-            80_000: 10_000, # 4
-            120_000: 4_000, # 5
-            140_000: 2_000, # 10
-        }
+        # self.saving_schedule = {
+        #     0: 2_000,       # 10
+        #     20_000: 4_000,  # 5
+        #     40_000: 8_000,  # 5
+        #     80_000: 10_000, # 4
+        #     120_000: 4_000, # 5
+        #     140_000: 2_000, # 10
+        # }
+        # THIS IS THE GOOD ONE:
+        # self.saving_schedule = {
+        #     0: 1_000,  # 20
+        #     20_000: 2_000,  # 10
+        #     40_000: 4_000,  # 10
+        #     80_000: 10_000,  # 4
+        #     120_000: 4_000,  # 10
+        #     140_000: 1_000,  # 20
+        # }
+        # FOR TESTING ONLY!!!:
         self.saving_schedule = {
             0: 2,   # 20
-            40: 2,  # 20
-            80: 5,  # 8
-            120: 10,# 4
+            100: 10,  # 20
         }
 
     def should_save_now(self, step):
@@ -202,7 +210,7 @@ class AdamW(Optimizer):
             self.partial_saved_steps += 1
 
         # for gradient saving
-        if self.partial_saved_steps % self.save_every_N_steps == 0:
+        if self.partial_saved_steps % self.save_every_N_steps == 0 and self.partial_saved_steps > 0:
 
             optim_name = self.__class__.__name__
             gradient_path = os.path.join(self.log_folder, f"{self.name}_{optim_name}_weights_and_updates.h5")

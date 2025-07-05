@@ -1,4 +1,6 @@
 import os
+# --model_config configs/llama_130m.json --lr 1e-4 --batch_size 32 --total_batch_size 64 --num_training_steps 160000 --warmup_steps 2000 --dtype bfloat16 --eval_every 1000 --save_every 1000 --optimizer adamw --beta1 0.98 --weight_decay 0.1 --grad_clipping 0.0 --run_name ew_130m_save0-5-11_ --save_dir logs --layers_to_save layers.0 layers.5 layers.11 --save_every_N_steps 10
+
 import time
 import json
 import random
@@ -10,14 +12,14 @@ import torch.nn as nn
 import torch.utils.data
 import torch.distributed as dist
 
-from adam_mini import Adam_mini
-
 import transformers
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
 from transformers import LlamaForCausalLM as HF_LlamaForCausalLM
 
+from optims.sgd import SGD
 from optims.adamw import AdamW
-from torch.optim.sgd import SGD
+from optims.adam_mini import Adam_mini
+# from torch.optim.sgd import SGD
 
 import datasets
 import datasets.distributed
@@ -145,7 +147,7 @@ def evaluate_model(model, preprocess_batched, pad_idx, global_rank, world_size, 
 def main(args):
 
     # set saving dir
-    args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_{args.weight_decay}wd_seed{args.seed}")
+    args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -324,8 +326,8 @@ def main(args):
     if args.optimizer.lower() == "adam":
         optimizer = torch.optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
                                      betas=(args.beta1, args.beta2), eps=args.eps)
-    elif args.optimizer.lower() == 'sgd':
-        optimizer = torch.optim.SGD(trainable_params, lr=args.lr, momentum=args.momentum,
+    elif args.optimizer.lower() == "sgd":
+        optimizer = SGD(trainable_params, lr=args.lr, momentum=args.momentum,
                                     weight_decay=args.weight_decay, nesterov=True)
     elif args.optimizer.lower() == 'adamw':
         # optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
@@ -335,7 +337,7 @@ def main(args):
                           save_every_N_steps=args.save_every_N_steps,
                           layers_to_save=args.layers_to_save,
                           log_folder=args.save_dir)
-    elif args.optimizer.lower() == 'adam-mini':
+    elif args.optimizer.lower() == 'adam_mini':
         #TODO: make sure it works
         optimizer = Adam_mini(
             named_parameters=model.named_parameters(),
@@ -343,13 +345,17 @@ def main(args):
             betas=(args.beta1, args.beta2),
             eps=args.eps,
             weight_decay=args.weight_decay,
-            dim=model_config.dim,
-            n_heads=model_config.n_heads,
-            n_kv_heads=model_config.n_kv_heads,  # default to be none
+            dim=model_config.hidden_size,
+            n_heads=model_config.num_attention_heads,
+            n_kv_heads=model_config.num_key_value_heads,  # default to be none
+            save_every_N_steps=args.save_every_N_steps,
+            layers_to_save=args.layers_to_save,
+            log_folder=args.save_dir,
         )
 
     else:
         raise ValueError(f"Optimizer {args.optimizer} not supported")
+    logger.info(f"Optimizer {args.optimizer} configured.")
 
     if not layer_wise_flag:
         scheduler = training_utils.get_scheculer(
@@ -377,7 +383,7 @@ def main(args):
     # TRAINING LOOP
     # we'll never go through all the data, so no need for epochs
     # ##############################
-
+    logger.info(f"Training starts")
     for batch_idx, batch in enumerate(dataloader):
 
         global_step += 1
@@ -404,7 +410,10 @@ def main(args):
         # add grad clipping
         if args.grad_clipping != 0.0: torch.nn.utils.clip_grad_norm_(trainable_params, args.grad_clipping)
 
-        if global_rank == 0: pbar.update(1)
+        if global_rank == 0:
+            pbar.update(1)
+            if update_step % 1_000 == 0:
+                logger.info(f"Update step: {update_step}.")
 
         if not layer_wise_flag:
             optimizer.step()
@@ -485,6 +494,8 @@ def main(args):
             },
                 step=global_step,
             )
+            if update_step % 1_000 == 0:
+                logger.info(f"Update step: {update_step}. Loss: {loss.item():.4f}. Tokens seen: {tokens_seen}.")
         update_time = time.time()
 
     # ##############################

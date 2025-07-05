@@ -31,7 +31,7 @@ export POST_NUM=3 #$2
 
 echo "Training with learning rate: $learning_rates, norm type: $norm_type on GPU $gpu"
 
-conda run torchrun --nproc_per_node 1 --master_port=29510 torchrun_main.py \
+conda run torchrun --standalone --nproc_per_node 1 --master_port=29510 torchrun_main.py \
     --model_config configs/llama_130m.json \
     --lr $learning_rates \
     --batch_size 32 \
