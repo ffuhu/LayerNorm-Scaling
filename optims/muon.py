@@ -1,6 +1,12 @@
 import torch
 import torch.distributed as dist
 
+import os
+import sys
+import numpy as np
+import h5py
+from tqdm import tqdm
+
 
 def zeropower_via_newtonschulz5(G, steps: int):
     """
@@ -230,7 +236,12 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
     Non-distributed variant of MuonWithAuxAdam.
     """
 
-    def __init__(self, param_groups):
+    def __init__(self, param_groups,
+                 name=None,
+                 log_folder=None,
+                 save_every_N_steps=10,
+                 layers_to_save=None,
+                 ):
         for group in param_groups:
             assert "use_muon" in group
             if group["use_muon"]:
@@ -248,6 +259,66 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                 assert set(group.keys()) == set(["params", "lr", "betas", "eps", "weight_decay", "use_muon"])
         super().__init__(param_groups, dict())
 
+        # for gradient and weight saving
+        self.grad_dict = {}
+        self.p_dict = {}
+        self.lr_dict = {}
+        self.step_dict = {}
+        self.partial_saved_steps = 0
+
+        self.name = name
+        self.log_folder = log_folder
+        self.save_every_N_steps = save_every_N_steps
+        self.layers_to_save = layers_to_save
+
+        # THIS IS THE GOOD ONE:
+        # self.saving_schedule = {
+        #     0: 1_000,  # 20
+        #     20_000: 2_000,  # 10
+        #     40_000: 4_000,  # 10
+        #     80_000: 10_000,  # 4
+        #     120_000: 4_000,  # 10
+        #     140_000: 1_000,  # 20
+        # }
+        # FOR TESTING ONLY!!!:
+        self.saving_schedule = {
+            0: 2,  # 20
+            100: 10,  # 20
+        }
+
+    def should_save_now(self, step):
+        saving_stages = list(self.saving_schedule.keys())
+        stage_id = torch.nonzero(step > torch.tensor(saving_stages))
+        saving_stage_id = stage_id[-1].item() if any(stage_id) else 0
+        save_every = self.saving_schedule[saving_stages[saving_stage_id]]
+        save_now = step % save_every == 0
+        return save_now
+
+    def should_save_weights_for_layer(self, p_name):
+        if self.layers_to_save:
+            for layer_name in self.layers_to_save:
+                if layer_name in p_name:
+                    return True
+        return False
+
+    def add_weights_and_updates_to_save_dict(self, name, step, p, update, lr):
+        # save the gradient update and the weights
+        if self.should_save_weights_for_layer(name) and self.should_save_now(step):
+            if name not in self.grad_dict.keys():
+                if step == 0:
+                    optim_name = self.__class__.__name__
+                    print(f"[{optim_name}] Save gradients for layer:\t{name}\t{update.shape}")
+
+                self.grad_dict[name] = np.zeros((self.save_every_N_steps, *update.shape), dtype=np.float16)
+                self.p_dict[name] = np.zeros((self.save_every_N_steps, *p.data.shape), dtype=np.float16)
+                self.lr_dict[name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float16)
+                self.step_dict[name] = np.zeros((self.save_every_N_steps, 1), dtype=np.uint16)
+
+            self.grad_dict[name][self.partial_saved_steps] = update.detach().cpu().float().numpy()
+            self.p_dict[name][self.partial_saved_steps] = p.data.detach().cpu().float().numpy()
+            self.lr_dict[name][self.partial_saved_steps] = lr
+            self.step_dict[name][self.partial_saved_steps] = step #state["step"] - 1
+
     @torch.no_grad()
     def step(self, closure=None):
 
@@ -258,17 +329,28 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
 
         for group in self.param_groups:
             if group["use_muon"]:
-                for p in group["params"]:
+                # for p in group["params"]:
+                for p_name, p in zip(group["param_names"], group["params"]):
                     if p.grad is None:
                         continue
                     state = self.state[p]
-                    if len(state) == 0:
+                    if "step" not in state:
+                        state["step"] = 0
+
+                    if "momentum_buffer" not in state:
                         state["momentum_buffer"] = torch.zeros_like(p)
                     update = muon_update(p.grad, state["momentum_buffer"], beta=group["momentum"])
+
+                    state["step"] += 1
+
+                    # add weights and updates to be saved
+                    self.add_weights_and_updates_to_save_dict(p_name, state["step"] - 1, p, update, group['lr'])
+
                     p.mul_(1 - group["lr"] * group["weight_decay"])
                     p.add_(update.reshape(p.shape), alpha=-group["lr"])
             else:
-                for p in group["params"]:
+                # for p in group["params"]:
+                for p_name, p in zip(group["param_names"], group["params"]):
                     state = self.state[p]
                     if len(state) == 0:
                         state["exp_avg"] = torch.zeros_like(p)
@@ -277,7 +359,88 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                     state["step"] += 1
                     update = adam_update(p.grad, state["exp_avg"], state["exp_avg_sq"],
                                          state["step"], group["betas"], group["eps"])
+
+                    state["step"] += 1
+
+                    # add weights and updates to be saved
+                    self.add_weights_and_updates_to_save_dict(p_name, state["step"] - 1, p, update, group['lr'])
+
                     p.mul_(1 - group["lr"] * group["weight_decay"])
                     p.add_(update, alpha=-group["lr"])
+
+
+        if self.should_save_now(state["step"] - 1):
+            self.partial_saved_steps += 1
+
+        # for gradient saving
+        if self.partial_saved_steps % self.save_every_N_steps == 0 and self.partial_saved_steps > 0:
+
+            optim_name = self.__class__.__name__
+            gradient_path = os.path.join(self.log_folder, f"{self.name}_{optim_name}_weights_and_updates.h5")
+
+            # Open or create an HDF5 file
+            with h5py.File(gradient_path, 'a') as f:  # 'a' mode allows appending data
+                pbar = tqdm(self.grad_dict.keys(), desc='Saving weights and updates')
+                for layer_name in pbar:
+                    layer_shape = self.grad_dict[layer_name].shape
+                    layer_size = sys.getsizeof(self.grad_dict[layer_name]) / 1024 ** 2
+                    pbar.set_description(f"Saving gradients for {layer_name} ({layer_size:.2f} MB)")
+                    # Create a dataset to store the gradients of each layer
+                    if f"{layer_name}_g" not in f:
+                        # f.create_dataset(layer_name, data=gradient, compression="gzip", chunks=True)
+                        dset_g = f.create_dataset(
+                            layer_name + '_g',
+                            shape=(0, *layer_shape[-2:]),  # Initial shape
+                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_p = f.create_dataset(
+                            layer_name + '_p',
+                            shape=(0, *layer_shape[-2:]),  # Initial shape
+                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_lr = f.create_dataset(
+                            layer_name + '_lr',
+                            shape=(0, 1),  # Initial shape
+                            maxshape=(None, 1),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_step = f.create_dataset(
+                            layer_name + '_step',
+                            shape=(0, 1),  # Initial shape
+                            maxshape=(None, 1),  # Allow expansion along axis 0
+                            dtype='uint16',
+                            compression="gzip"  # Optional compression
+                        )
+                    else:
+                        dset_g = f[layer_name + '_g']
+                        dset_p = f[layer_name + '_p']
+                        dset_lr = f[layer_name + '_lr']
+                        dset_step = f[layer_name + '_step']
+
+                    # Resize the dataset to accommodate new data
+                    current_size = dset_g.shape[0]
+                    new_size = current_size + layer_shape[0]
+                    dset_g.resize(new_size, axis=0)
+                    dset_p.resize(new_size, axis=0)
+                    dset_lr.resize(new_size, axis=0)
+                    dset_step.resize(new_size, axis=0)
+
+                    # Write new data at the end of the dataset
+                    dset_g[current_size:new_size] = self.grad_dict[layer_name]
+                    dset_p[current_size:new_size] = self.p_dict[layer_name]
+                    dset_lr[current_size:new_size] = self.lr_dict[layer_name]
+                    dset_step[current_size:new_size] = self.step_dict[layer_name]
+
+            print("Saved at", gradient_path)
+            self.grad_dict = {}
+            self.p_dict = {}
+            self.lr_dict = {}
+            self.step_dict = {}
+            self.partial_saved_steps = 0
 
         return loss

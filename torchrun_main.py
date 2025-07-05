@@ -323,12 +323,13 @@ def main(args):
     #     optimizer = torch.optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     # else:
     #     raise ValueError(f"Optimizer {args.optimizer} not supported")
-    if args.optimizer.lower() == "adam":
-        optimizer = torch.optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
-                                     betas=(args.beta1, args.beta2), eps=args.eps)
-    elif args.optimizer.lower() == "sgd":
-        optimizer = SGD(trainable_params, lr=args.lr, momentum=args.momentum,
-                                    weight_decay=args.weight_decay, nesterov=True)
+    if args.optimizer.lower() == "sgd":
+        optimizer = SGD(model.named_parameters(), lr=args.lr, momentum=args.momentum,
+                        weight_decay=args.weight_decay, nesterov=True,
+                        save_every_N_steps=args.save_every_N_steps,
+                        layers_to_save=args.layers_to_save,
+                        log_folder=args.save_dir,
+        )
     elif args.optimizer.lower() == 'adamw':
         # optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
         #                               betas=(args.beta1, args.beta2), eps=args.eps)
@@ -412,8 +413,8 @@ def main(args):
 
         if global_rank == 0:
             pbar.update(1)
-            if update_step % 1_000 == 0:
-                logger.info(f"Update step: {update_step}.")
+            # if update_step % 1_000 == 0:
+            #     logger.info(f"Update step: {update_step}.")
 
         if not layer_wise_flag:
             optimizer.step()
