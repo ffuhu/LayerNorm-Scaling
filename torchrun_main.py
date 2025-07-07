@@ -357,9 +357,9 @@ def main(args):
     elif args.optimizer.lower() == 'muon':
 
         hidden_weights = [p for p in model.model.layers.parameters() if p.ndim >= 2]
-        hidden_weights_names = [n for n, p in model.model.layers.named_parameters() if p.ndim >= 2]
+        hidden_weights_names = [f"layers.{n}" for n, p in model.model.layers.named_parameters() if p.ndim >= 2]
         hidden_gains_biases = [p for p in model.model.layers.parameters() if p.ndim < 2]
-        hidden_gains_biases_names = [n for n, p in model.model.layers.named_parameters() if p.ndim < 2]
+        hidden_gains_biases_names = [f"layers.{n}" for n, p in model.model.layers.named_parameters() if p.ndim < 2]
         nonhidden_params = [*model.lm_head.parameters(), *model.model.embed_tokens.parameters()]
         nonhidden_params_names = [*[f"lm_head.{n}" for n, p in model.lm_head.named_parameters()],
                                   *[f"embed_tokens.{n}" for n, p in model.model.embed_tokens.named_parameters()]]

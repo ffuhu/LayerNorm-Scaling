@@ -356,7 +356,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                         state["exp_avg"] = torch.zeros_like(p)
                         state["exp_avg_sq"] = torch.zeros_like(p)
                         state["step"] = 0
-                    state["step"] += 1
+
                     update = adam_update(p.grad, state["exp_avg"], state["exp_avg_sq"],
                                          state["step"], group["betas"], group["eps"])
 
