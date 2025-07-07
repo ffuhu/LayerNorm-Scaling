@@ -94,19 +94,19 @@ class AdamW(Optimizer):
         #     140_000: 2_000, # 10
         # }
         # THIS IS THE GOOD ONE:
-        # self.saving_schedule = {
-        #     0: 1_000,  # 20
-        #     20_000: 2_000,  # 10
-        #     40_000: 4_000,  # 10
-        #     80_000: 10_000,  # 4
-        #     120_000: 4_000,  # 10
-        #     140_000: 1_000,  # 20
-        # }
-        # FOR TESTING ONLY!!!:
         self.saving_schedule = {
-            0: 2,   # 20
-            100: 10,  # 20
+            0: 1_000,  # 20
+            20_000: 2_000,  # 10
+            40_000: 4_000,  # 10
+            80_000: 10_000,  # 4
+            120_000: 4_000,  # 10
+            140_000: 1_000,  # 20
         }
+        # # FOR TESTING ONLY!!!:
+        # self.saving_schedule = {
+        #     0: 2,   # 20
+        #     100: 10,  # 20
+        # }
 
     def should_save_now(self, step):
         saving_stages = list(self.saving_schedule.keys())
