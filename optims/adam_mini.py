@@ -287,7 +287,7 @@ class Adam_mini(torch.optim.Optimizer):
             eps = group["eps"]
 
             for p in group["params"]:
-                state = self.state[p]
+                state = self.state[id(p)]
                 if any(adam_block_name in name for adam_block_name in self.adam_block_names):  # for bias terms
                     if p.grad is None:
                         continue

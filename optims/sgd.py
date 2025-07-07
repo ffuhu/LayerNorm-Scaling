@@ -130,7 +130,7 @@ class SGD(Optimizer):
                 if p.grad is None:
                     continue
 
-                state = self.state[p]
+                state = self.state[id(p)]
                 if "step" not in state:
                     state["step"] = 0
 

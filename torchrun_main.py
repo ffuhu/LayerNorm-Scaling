@@ -19,6 +19,7 @@ from transformers import LlamaForCausalLM as HF_LlamaForCausalLM
 from optims.sgd import SGD
 from optims.adamw import AdamW
 from optims.adam_mini import Adam_mini
+from optims.muon import SingleDeviceMuonWithAuxAdam
 # from torch.optim.sgd import SGD
 
 import datasets
@@ -339,7 +340,6 @@ def main(args):
                           layers_to_save=args.layers_to_save,
                           log_folder=args.save_dir)
     elif args.optimizer.lower() == 'adam_mini':
-        #TODO: make sure it works
         optimizer = Adam_mini(
             named_parameters=model.named_parameters(),
             lr=args.lr,
@@ -353,6 +353,29 @@ def main(args):
             layers_to_save=args.layers_to_save,
             log_folder=args.save_dir,
         )
+
+    elif args.optimizer.lower() == 'muon':
+
+        hidden_weights = [p for p in model.model.layers.parameters() if p.ndim >= 2]
+        hidden_weights_names = [n for n, p in model.model.layers.named_parameters() if p.ndim >= 2]
+        hidden_gains_biases = [p for p in model.model.layers.parameters() if p.ndim < 2]
+        hidden_gains_biases_names = [n for n, p in model.model.layers.named_parameters() if p.ndim < 2]
+        nonhidden_params = [*model.lm_head.parameters(), *model.model.embed_tokens.parameters()]
+        nonhidden_params_names = [*[f"lm_head.{n}" for n, p in model.lm_head.named_parameters()],
+                                  *[f"embed_tokens.{n}" for n, p in model.model.embed_tokens.named_parameters()]]
+        param_groups = [
+            dict(params=hidden_weights, use_muon=True,
+                 lr=args.lr, weight_decay=args.weight_decay,
+                 param_names=hidden_weights_names),
+            dict(params=hidden_gains_biases + nonhidden_params, use_muon=False,
+                 lr=1e-3, betas=(0.98, 0.95), weight_decay=0.1,
+                 param_names=hidden_gains_biases_names + nonhidden_params_names),
+        ]
+        optimizer = SingleDeviceMuonWithAuxAdam(param_groups,
+                                                save_every_N_steps=args.save_every_N_steps,
+                                                layers_to_save=args.layers_to_save,
+                                                log_folder=args.save_dir,
+                                                )
 
     else:
         raise ValueError(f"Optimizer {args.optimizer} not supported")

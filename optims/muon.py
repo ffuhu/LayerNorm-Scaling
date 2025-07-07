@@ -249,14 +249,14 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                 group["lr"] = group.get("lr", 0.02)
                 group["momentum"] = group.get("momentum", 0.95)
                 group["weight_decay"] = group.get("weight_decay", 0)
-                assert set(group.keys()) == set(["params", "lr", "momentum", "weight_decay", "use_muon"])
+                assert set(group.keys()) == {"params", "lr", "momentum", "weight_decay", "use_muon", "param_names"}
             else:
                 # defaults
                 group["lr"] = group.get("lr", 3e-4)
                 group["betas"] = group.get("betas", (0.9, 0.95))
                 group["eps"] = group.get("eps", 1e-10)
                 group["weight_decay"] = group.get("weight_decay", 0)
-                assert set(group.keys()) == set(["params", "lr", "betas", "eps", "weight_decay", "use_muon"])
+                assert set(group.keys()) == {"params", "lr", "betas", "eps", "weight_decay", "use_muon", "param_names"}
         super().__init__(param_groups, dict())
 
         # for gradient and weight saving
@@ -333,7 +333,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                 for p_name, p in zip(group["param_names"], group["params"]):
                     if p.grad is None:
                         continue
-                    state = self.state[p]
+                    state = self.state[id(p)]
                     if "step" not in state:
                         state["step"] = 0
 
@@ -351,7 +351,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
             else:
                 # for p in group["params"]:
                 for p_name, p in zip(group["param_names"], group["params"]):
-                    state = self.state[p]
+                    state = self.state[id(p)]
                     if len(state) == 0:
                         state["exp_avg"] = torch.zeros_like(p)
                         state["exp_avg_sq"] = torch.zeros_like(p)
