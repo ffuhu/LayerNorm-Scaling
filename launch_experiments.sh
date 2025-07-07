@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -p gpu_a100
+#SBATCH -p a100
 #SBATCH -N 1
 ##SBATCH --array=3-6 <-- SET IT WHEN CALLING "sbtach --array=N-M file.sh"
 #SBATCH --ntasks-per-node=1
@@ -102,22 +102,22 @@ case "$SLURM_ARRAY_TASK_ID" in
   13)
     optimizer="muon"
     weight_decay=0.0005
-    learning_rate=1e-2
+    learning_rate=5e-3
     ;;
   14)
     optimizer="muon"
     weight_decay=0.0005
-    learning_rate=5e-2
+    learning_rate=1e-2
     ;;
   15)
     optimizer="muon"
     weight_decay=0.0005
-    learning_rate=1e-1
+    learning_rate=5e-2
     ;;
   16)
     optimizer="muon"
     weight_decay=0.0005
-    learning_rate=5e-1
+    learning_rate=1e-1
     ;;
   *)
     echo "Number not recognized. Please enter 1-16."
