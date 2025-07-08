@@ -169,7 +169,7 @@ class SGD(Optimizer):
                         self.p_dict[p_name] = np.zeros((self.save_every_N_steps, *p.data.shape),
                                                        dtype=np.float16)
                         self.lr_dict[p_name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float16)
-                        self.step_dict[p_name] = np.zeros((self.save_every_N_steps, 1), dtype=np.uint16)
+                        self.step_dict[p_name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float32)
 
                     self.grad_dict[p_name][self.partial_saved_steps] = d_p.detach().cpu().float().numpy()
                     self.p_dict[p_name][self.partial_saved_steps] = p.data.detach().cpu().float().numpy()

@@ -185,7 +185,7 @@ class AdamW(Optimizer):
                         self.grad_dict[p_name] = np.zeros((self.save_every_N_steps, *grad.shape), dtype=np.float16)
                         self.p_dict[p_name] = np.zeros((self.save_every_N_steps, *p.data.shape), dtype=np.float16)
                         self.lr_dict[p_name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float16)
-                        self.step_dict[p_name] = np.zeros((self.save_every_N_steps, 1), dtype=np.uint16)
+                        self.step_dict[p_name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float32)
 
 
                     self.grad_dict[p_name][self.partial_saved_steps] = norm_grad.detach().cpu().float().numpy()

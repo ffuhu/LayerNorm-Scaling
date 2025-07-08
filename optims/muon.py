@@ -312,7 +312,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                 self.grad_dict[name] = np.zeros((self.save_every_N_steps, *update.shape), dtype=np.float16)
                 self.p_dict[name] = np.zeros((self.save_every_N_steps, *p.data.shape), dtype=np.float16)
                 self.lr_dict[name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float16)
-                self.step_dict[name] = np.zeros((self.save_every_N_steps, 1), dtype=np.uint16)
+                self.step_dict[name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float32)
 
             self.grad_dict[name][self.partial_saved_steps] = update.detach().cpu().float().numpy()
             self.p_dict[name][self.partial_saved_steps] = p.data.detach().cpu().float().numpy()
