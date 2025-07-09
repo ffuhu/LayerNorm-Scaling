@@ -330,6 +330,7 @@ def main(args):
                         save_every_N_steps=args.save_every_N_steps,
                         layers_to_save=args.layers_to_save,
                         log_folder=args.save_dir,
+                        logger=logger,
         )
     elif args.optimizer.lower() == 'adamw':
         # optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay,
@@ -338,7 +339,9 @@ def main(args):
                           betas=(args.beta1, args.beta2), eps=args.eps,
                           save_every_N_steps=args.save_every_N_steps,
                           layers_to_save=args.layers_to_save,
-                          log_folder=args.save_dir)
+                          log_folder=args.save_dir,
+                          logger=logger,
+                          )
     elif args.optimizer.lower() == 'adam_mini':
         optimizer = Adam_mini(
             named_parameters=model.named_parameters(),
@@ -352,6 +355,7 @@ def main(args):
             save_every_N_steps=args.save_every_N_steps,
             layers_to_save=args.layers_to_save,
             log_folder=args.save_dir,
+            logger=logger,
         )
 
     elif args.optimizer.lower() == 'muon':
@@ -375,6 +379,7 @@ def main(args):
                                                 save_every_N_steps=args.save_every_N_steps,
                                                 layers_to_save=args.layers_to_save,
                                                 log_folder=args.save_dir,
+                                                logger=logger,
                                                 )
 
     else:
@@ -443,6 +448,10 @@ def main(args):
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad()
+
+            # to save weights and updates every optim.save_every_N_steps according to optim.saving_schedule
+            if global_rank == 0:
+                optimizer.save(update_step=update_step)
 
         update_step += 1
         update_time = time.time() - update_time

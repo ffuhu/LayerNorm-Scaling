@@ -34,6 +34,7 @@ class Adam_mini(torch.optim.Optimizer):
             log_folder=None,
             save_every_N_steps=10,
             layers_to_save=None,
+            logger=None,
     ):
 
         '''
@@ -160,8 +161,9 @@ class Adam_mini(torch.optim.Optimizer):
         self.log_folder = log_folder
         self.save_every_N_steps = save_every_N_steps
         self.layers_to_save = layers_to_save
+        self.logger = logger
 
-        # THIS IS THE GOOD ONE:
+        # saving schedule for weights and updates
         self.saving_schedule = {
             0: 1_000,  # 20
             20_000: 2_000,  # 10
@@ -175,6 +177,7 @@ class Adam_mini(torch.optim.Optimizer):
         #     0: 2,  # 20
         #     100: 10,  # 20
         # }
+        # print('\n\n\nWARNING: TESTING WITH SAVING SCHEDULE!!!\n\n\n')
 
     def should_save_now(self, step):
         saving_stages = list(self.saving_schedule.keys())
@@ -195,10 +198,6 @@ class Adam_mini(torch.optim.Optimizer):
         # save the gradient update and the weights
         if self.should_save_weights_for_layer(name) and self.should_save_now(step):
             if name not in self.grad_dict.keys():
-                if step == 0:
-                    optim_name = self.__class__.__name__
-                    print(f"[{optim_name}] Save gradients for layer:\t{name}\t{update.shape}")
-
                 self.grad_dict[name] = np.zeros((self.save_every_N_steps, *update.shape), dtype=np.float16)
                 self.p_dict[name] = np.zeros((self.save_every_N_steps, *p.data.shape), dtype=np.float16)
                 self.lr_dict[name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float16)
@@ -208,6 +207,94 @@ class Adam_mini(torch.optim.Optimizer):
             self.p_dict[name][self.partial_saved_steps] = p.data.detach().cpu().float().numpy()
             self.lr_dict[name][self.partial_saved_steps] = lr
             self.step_dict[name][self.partial_saved_steps] = step #state["step"] - 1
+
+            optim_name = self.__class__.__name__
+            msg = f"[{optim_name}, step={step}] Added update, weight, lr and step for layer:\t{name}\t{update.shape}"
+            if self.logger:
+                self.logger.info(msg)
+            else:
+                print(msg)
+
+    def save(self, update_step):
+
+        if self.should_save_now(update_step):
+            self.partial_saved_steps += 1
+
+        # for gradient saving
+        if self.partial_saved_steps % self.save_every_N_steps == 0 and self.partial_saved_steps > 0:
+
+            optim_name = self.__class__.__name__
+            gradient_path = os.path.join(self.log_folder, f"{self.name}_{optim_name}_weights_and_updates.h5")
+
+            # Open or create an HDF5 file
+            with h5py.File(gradient_path, 'a') as f:  # 'a' mode allows appending data
+                pbar = tqdm(self.grad_dict.keys(), desc='Saving weights and updates')
+                for layer_name in pbar:
+                    layer_shape = self.grad_dict[layer_name].shape
+                    layer_size = sys.getsizeof(self.grad_dict[layer_name]) / 1024 ** 2
+                    pbar.set_description(f"Saving gradients for {layer_name} ({layer_size:.2f} MB)")
+                    # Create a dataset to store the gradients of each layer
+                    if f"{layer_name}_g" not in f:
+                        # f.create_dataset(layer_name, data=gradient, compression="gzip", chunks=True)
+                        dset_g = f.create_dataset(
+                            layer_name + '_g',
+                            shape=(0, *layer_shape[-2:]),  # Initial shape
+                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_p = f.create_dataset(
+                            layer_name + '_p',
+                            shape=(0, *layer_shape[-2:]),  # Initial shape
+                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_lr = f.create_dataset(
+                            layer_name + '_lr',
+                            shape=(0, 1),  # Initial shape
+                            maxshape=(None, 1),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_step = f.create_dataset(
+                            layer_name + '_step',
+                            shape=(0, 1),  # Initial shape
+                            maxshape=(None, 1),  # Allow expansion along axis 0
+                            dtype='float32',
+                            compression="gzip"  # Optional compression
+                        )
+                    else:
+                        dset_g = f[layer_name + '_g']
+                        dset_p = f[layer_name + '_p']
+                        dset_lr = f[layer_name + '_lr']
+                        dset_step = f[layer_name + '_step']
+
+                    # Resize the dataset to accommodate new data
+                    current_size = dset_g.shape[0]
+                    new_size = current_size + layer_shape[0]
+                    dset_g.resize(new_size, axis=0)
+                    dset_p.resize(new_size, axis=0)
+                    dset_lr.resize(new_size, axis=0)
+                    dset_step.resize(new_size, axis=0)
+
+                    # Write new data at the end of the dataset
+                    dset_g[current_size:new_size] = self.grad_dict[layer_name]
+                    dset_p[current_size:new_size] = self.p_dict[layer_name]
+                    dset_lr[current_size:new_size] = self.lr_dict[layer_name]
+                    dset_step[current_size:new_size] = self.step_dict[layer_name]
+
+            msg = f"[STEP: {update_step}] Weights and updates saved at: {gradient_path}"
+            if self.logger:
+                self.logger.info(msg)
+            else:
+                print(msg)
+
+            self.grad_dict = {}
+            self.p_dict = {}
+            self.lr_dict = {}
+            self.step_dict = {}
+            self.partial_saved_steps = 0
 
     def count_block(self):
         count_embd = 0
@@ -473,78 +560,4 @@ class Adam_mini(torch.optim.Optimizer):
                     update.mul_(lr)
                     p.add_(-update)
 
-        # counter to save every N steps
-        if self.should_save_now(state["step"] - 1):
-            self.partial_saved_steps += 1
-
-        # for gradient saving
-        if self.partial_saved_steps % self.save_every_N_steps == 0 and self.partial_saved_steps > 0:
-
-            optim_name = self.__class__.__name__
-            gradient_path = os.path.join(self.log_folder, f"{self.name}_{optim_name}_weights_and_updates.h5")
-
-            # Open or create an HDF5 file
-            with h5py.File(gradient_path, 'a') as f:  # 'a' mode allows appending data
-                pbar = tqdm(self.grad_dict.keys(), desc='Saving weights and updates')
-                for layer_name in pbar:
-                    layer_shape = self.grad_dict[layer_name].shape
-                    layer_size = sys.getsizeof(self.grad_dict[layer_name]) / 1024 ** 2
-                    pbar.set_description(f"Saving gradients for {layer_name} ({layer_size:.2f} MB)")
-                    # Create a dataset to store the gradients of each layer
-                    if f"{layer_name}_g" not in f:
-                        # f.create_dataset(layer_name, data=gradient, compression="gzip", chunks=True)
-                        dset_g = f.create_dataset(
-                            layer_name + '_g',
-                            shape=(0, *layer_shape[-2:]),  # Initial shape
-                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
-                            dtype='float16',
-                            compression="gzip"  # Optional compression
-                        )
-                        dset_p = f.create_dataset(
-                            layer_name + '_p',
-                            shape=(0, *layer_shape[-2:]),  # Initial shape
-                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
-                            dtype='float16',
-                            compression="gzip"  # Optional compression
-                        )
-                        dset_lr = f.create_dataset(
-                            layer_name + '_lr',
-                            shape=(0, 1),  # Initial shape
-                            maxshape=(None, 1),  # Allow expansion along axis 0
-                            dtype='float16',
-                            compression="gzip"  # Optional compression
-                        )
-                        dset_step = f.create_dataset(
-                            layer_name + '_step',
-                            shape=(0, 1),  # Initial shape
-                            maxshape=(None, 1),  # Allow expansion along axis 0
-                            dtype='uint16',
-                            compression="gzip"  # Optional compression
-                        )
-                    else:
-                        dset_g = f[layer_name + '_g']
-                        dset_p = f[layer_name + '_p']
-                        dset_lr = f[layer_name + '_lr']
-                        dset_step = f[layer_name + '_step']
-
-                    # Resize the dataset to accommodate new data
-                    current_size = dset_g.shape[0]
-                    new_size = current_size + layer_shape[0]
-                    dset_g.resize(new_size, axis=0)
-                    dset_p.resize(new_size, axis=0)
-                    dset_lr.resize(new_size, axis=0)
-                    dset_step.resize(new_size, axis=0)
-
-                    # Write new data at the end of the dataset
-                    dset_g[current_size:new_size] = self.grad_dict[layer_name]
-                    dset_p[current_size:new_size] = self.p_dict[layer_name]
-                    dset_lr[current_size:new_size] = self.lr_dict[layer_name]
-                    dset_step[current_size:new_size] = self.step_dict[layer_name]
-
-            print("Saved at", gradient_path)
-            self.grad_dict = {}
-            self.p_dict = {}
-            self.lr_dict = {}
-            self.step_dict = {}
-            self.partial_saved_steps = 0
         return loss

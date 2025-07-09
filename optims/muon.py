@@ -91,7 +91,8 @@ class Muon(torch.optim.Optimizer):
                 if base_i + dist.get_rank() < len(params):
                     p = params[base_i + dist.get_rank()]
                     if p.grad is None:
-                        continue
+                        # continue
+                        p.grad = torch.zeros_like(p)  # Force synchronization
                     state = self.state[p]
                     if len(state) == 0:
                         state["momentum_buffer"] = torch.zeros_like(p)
@@ -123,7 +124,8 @@ class SingleDeviceMuon(torch.optim.Optimizer):
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None:
-                    continue
+                    # continue
+                    p.grad = torch.zeros_like(p)  # Force synchronization
                 state = self.state[p]
                 if len(state) == 0:
                     state["momentum_buffer"] = torch.zeros_like(p)
@@ -206,7 +208,8 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                     if base_i + dist.get_rank() < len(params):
                         p = params[base_i + dist.get_rank()]
                         if p.grad is None:
-                            continue
+                            # continue
+                            p.grad = torch.zeros_like(p)  # Force synchronization
                         state = self.state[p]
                         if len(state) == 0:
                             state["momentum_buffer"] = torch.zeros_like(p)
@@ -217,6 +220,9 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                                     params_pad[base_i + dist.get_rank()])
             else:
                 for p in group["params"]:
+                    if p.grad is None:
+                        # continue
+                        p.grad = torch.zeros_like(p)  # Force synchronization
                     state = self.state[p]
                     if len(state) == 0:
                         state["exp_avg"] = torch.zeros_like(p)
@@ -241,6 +247,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                  log_folder=None,
                  save_every_N_steps=10,
                  layers_to_save=None,
+                 logger=None,
                  ):
         for group in param_groups:
             assert "use_muon" in group
@@ -270,6 +277,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
         self.log_folder = log_folder
         self.save_every_N_steps = save_every_N_steps
         self.layers_to_save = layers_to_save
+        self.logger = logger
 
         # THIS IS THE GOOD ONE:
         self.saving_schedule = {
@@ -285,6 +293,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
         #     0: 2,  # 20
         #     100: 10,  # 20
         # }
+        # print('\n\n\nWARNING: TESTING WITH SAVING SCHEDULE!!!\n\n\n')
 
     def should_save_now(self, step):
         saving_stages = list(self.saving_schedule.keys())
@@ -305,10 +314,6 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
         # save the gradient update and the weights
         if self.should_save_weights_for_layer(name) and self.should_save_now(step):
             if name not in self.grad_dict.keys():
-                if step == 0:
-                    optim_name = self.__class__.__name__
-                    print(f"[{optim_name}] Save gradients for layer:\t{name}\t{update.shape}")
-
                 self.grad_dict[name] = np.zeros((self.save_every_N_steps, *update.shape), dtype=np.float16)
                 self.p_dict[name] = np.zeros((self.save_every_N_steps, *p.data.shape), dtype=np.float16)
                 self.lr_dict[name] = np.zeros((self.save_every_N_steps, 1), dtype=np.float16)
@@ -319,57 +324,16 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
             self.lr_dict[name][self.partial_saved_steps] = lr
             self.step_dict[name][self.partial_saved_steps] = step #state["step"] - 1
 
-    @torch.no_grad()
-    def step(self, closure=None):
-
-        loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-
-        for group in self.param_groups:
-            if group["use_muon"]:
-                # for p in group["params"]:
-                for p_name, p in zip(group["param_names"], group["params"]):
-                    if p.grad is None:
-                        continue
-                    state = self.state[id(p)]
-                    if "step" not in state:
-                        state["step"] = 0
-
-                    if "momentum_buffer" not in state:
-                        state["momentum_buffer"] = torch.zeros_like(p)
-                    update = muon_update(p.grad, state["momentum_buffer"], beta=group["momentum"])
-
-                    state["step"] += 1
-
-                    # add weights and updates to be saved
-                    self.add_weights_and_updates_to_save_dict(p_name, state["step"] - 1, p, update, group['lr'])
-
-                    p.mul_(1 - group["lr"] * group["weight_decay"])
-                    p.add_(update.reshape(p.shape), alpha=-group["lr"])
+            optim_name = self.__class__.__name__
+            msg = f"[{optim_name}, step={step}] Added update, weight, lr and step for layer:\t{name}\t{update.shape}"
+            if self.logger:
+                self.logger.info(msg)
             else:
-                # for p in group["params"]:
-                for p_name, p in zip(group["param_names"], group["params"]):
-                    state = self.state[id(p)]
-                    if len(state) == 0:
-                        state["exp_avg"] = torch.zeros_like(p)
-                        state["exp_avg_sq"] = torch.zeros_like(p)
-                        state["step"] = 0
+                print(msg)
 
-                    update = adam_update(p.grad, state["exp_avg"], state["exp_avg_sq"],
-                                         state["step"], group["betas"], group["eps"])
+    def save(self, update_step):
 
-                    state["step"] += 1
-
-                    # add weights and updates to be saved
-                    self.add_weights_and_updates_to_save_dict(p_name, state["step"] - 1, p, update, group['lr'])
-
-                    p.mul_(1 - group["lr"] * group["weight_decay"])
-                    p.add_(update, alpha=-group["lr"])
-
-
-        if self.should_save_now(state["step"] - 1):
+        if self.should_save_now(update_step):
             self.partial_saved_steps += 1
 
         # for gradient saving
@@ -413,7 +377,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                             layer_name + '_step',
                             shape=(0, 1),  # Initial shape
                             maxshape=(None, 1),  # Allow expansion along axis 0
-                            dtype='uint16',
+                            dtype='float32',
                             compression="gzip"  # Optional compression
                         )
                     else:
@@ -436,11 +400,67 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                     dset_lr[current_size:new_size] = self.lr_dict[layer_name]
                     dset_step[current_size:new_size] = self.step_dict[layer_name]
 
-            print("Saved at", gradient_path)
+            msg = f"[STEP: {update_step}] Weights and updates saved at: {gradient_path}"
+            if self.logger:
+                self.logger.info(msg)
+            else:
+                print(msg)
+
             self.grad_dict = {}
             self.p_dict = {}
             self.lr_dict = {}
             self.step_dict = {}
             self.partial_saved_steps = 0
+
+    @torch.no_grad()
+    def step(self, closure=None):
+
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group in self.param_groups:
+            if group["use_muon"]:
+                # for p in group["params"]:
+                for p_name, p in zip(group["param_names"], group["params"]):
+                    if p.grad is None:
+                        # continue
+                        p.grad = torch.zeros_like(p)  # Force synchronization
+                    state = self.state[id(p)]
+                    if "step" not in state:
+                        state["step"] = 0
+
+                    if "momentum_buffer" not in state:
+                        state["momentum_buffer"] = torch.zeros_like(p)
+                    update = muon_update(p.grad, state["momentum_buffer"], beta=group["momentum"])
+
+                    state["step"] += 1
+
+                    # add weights and updates to be saved
+                    self.add_weights_and_updates_to_save_dict(p_name, state["step"] - 1, p, update, group['lr'])
+
+                    p.mul_(1 - group["lr"] * group["weight_decay"])
+                    p.add_(update.reshape(p.shape), alpha=-group["lr"])
+            else:
+                # for p in group["params"]:
+                for p_name, p in zip(group["param_names"], group["params"]):
+                    if p.grad is None:
+                        # continue
+                        p.grad = torch.zeros_like(p)  # Force synchronization
+                    state = self.state[id(p)]
+                    if len(state) == 0:
+                        state["exp_avg"] = torch.zeros_like(p)
+                        state["exp_avg_sq"] = torch.zeros_like(p)
+                        state["step"] = 0
+                    state["step"] += 1
+                    update = adam_update(p.grad, state["exp_avg"], state["exp_avg_sq"],
+                                         state["step"], group["betas"], group["eps"])
+
+                    # add weights and updates to be saved
+                    self.add_weights_and_updates_to_save_dict(p_name, state["step"] - 1, p, update, group['lr'])
+
+                    p.mul_(1 - group["lr"] * group["weight_decay"])
+                    p.add_(update, alpha=-group["lr"])
 
         return loss

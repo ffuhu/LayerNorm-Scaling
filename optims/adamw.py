@@ -51,6 +51,7 @@ class AdamW(Optimizer):
             log_folder=None,
             save_every_N_steps=10,
             layers_to_save=None,
+            logger=None,
     ):
         if not no_deprecation_warning:
             warnings.warn(
@@ -84,16 +85,9 @@ class AdamW(Optimizer):
         self.log_folder = log_folder
         self.save_every_N_steps = save_every_N_steps
         self.layers_to_save = layers_to_save
+        self.logger = logger
 
-        # self.saving_schedule = {
-        #     0: 2_000,       # 10
-        #     20_000: 4_000,  # 5
-        #     40_000: 8_000,  # 5
-        #     80_000: 10_000, # 4
-        #     120_000: 4_000, # 5
-        #     140_000: 2_000, # 10
-        # }
-        # THIS IS THE GOOD ONE:
+        # saving schedule for weights and updates
         self.saving_schedule = {
             0: 1_000,  # 20
             20_000: 2_000,  # 10
@@ -107,6 +101,7 @@ class AdamW(Optimizer):
         #     0: 2,   # 20
         #     100: 10,  # 20
         # }
+        # print('\n\n\nWARNING: TESTING WITH SAVING SCHEDULE!!!\n\n\n')
 
     def should_save_now(self, step):
         saving_stages = list(self.saving_schedule.keys())
@@ -122,6 +117,87 @@ class AdamW(Optimizer):
                 if layer_name in p_name:
                     return True
         return False
+
+    def save(self, update_step):
+
+        if self.should_save_now(update_step):
+            self.partial_saved_steps += 1
+
+        # for gradient saving
+        if self.partial_saved_steps % self.save_every_N_steps == 0 and self.partial_saved_steps > 0:
+
+            optim_name = self.__class__.__name__
+            gradient_path = os.path.join(self.log_folder, f"{self.name}_{optim_name}_weights_and_updates.h5")
+
+            # Open or create an HDF5 file
+            with h5py.File(gradient_path, 'a') as f:  # 'a' mode allows appending data
+                pbar = tqdm(self.grad_dict.keys(), desc='Saving weights and updates')
+                for layer_name in pbar:
+                    layer_shape = self.grad_dict[layer_name].shape
+                    layer_size = sys.getsizeof(self.grad_dict[layer_name]) / 1024 ** 2
+                    pbar.set_description(f"Saving gradients for {layer_name} ({layer_size:.2f} MB)")
+                    # Create a dataset to store the gradients of each layer
+                    if f"{layer_name}_g" not in f:
+                        # f.create_dataset(layer_name, data=gradient, compression="gzip", chunks=True)
+                        dset_g = f.create_dataset(
+                            layer_name + '_g',
+                            shape=(0, *layer_shape[-2:]),  # Initial shape
+                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_p = f.create_dataset(
+                            layer_name + '_p',
+                            shape=(0, *layer_shape[-2:]),  # Initial shape
+                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_lr = f.create_dataset(
+                            layer_name + '_lr',
+                            shape=(0, 1),  # Initial shape
+                            maxshape=(None, 1),  # Allow expansion along axis 0
+                            dtype='float16',
+                            compression="gzip"  # Optional compression
+                        )
+                        dset_step = f.create_dataset(
+                            layer_name + '_step',
+                            shape=(0, 1),  # Initial shape
+                            maxshape=(None, 1),  # Allow expansion along axis 0
+                            dtype='float32',
+                            compression="gzip"  # Optional compression
+                        )
+                    else:
+                        dset_g = f[layer_name + '_g']
+                        dset_p = f[layer_name + '_p']
+                        dset_lr = f[layer_name + '_lr']
+                        dset_step = f[layer_name + '_step']
+
+                    # Resize the dataset to accommodate new data
+                    current_size = dset_g.shape[0]
+                    new_size = current_size + layer_shape[0]
+                    dset_g.resize(new_size, axis=0)
+                    dset_p.resize(new_size, axis=0)
+                    dset_lr.resize(new_size, axis=0)
+                    dset_step.resize(new_size, axis=0)
+
+                    # Write new data at the end of the dataset
+                    dset_g[current_size:new_size] = self.grad_dict[layer_name]
+                    dset_p[current_size:new_size] = self.p_dict[layer_name]
+                    dset_lr[current_size:new_size] = self.lr_dict[layer_name]
+                    dset_step[current_size:new_size] = self.step_dict[layer_name]
+
+            msg = f"[STEP: {update_step}] Weights and updates saved at: {gradient_path}"
+            if self.logger:
+                self.logger.info(msg)
+            else:
+                print(msg)
+
+            self.grad_dict = {}
+            self.p_dict = {}
+            self.lr_dict = {}
+            self.step_dict = {}
+            self.partial_saved_steps = 0
 
     @torch.no_grad()
     def step(self, closure: Callable = None):
@@ -178,9 +254,9 @@ class AdamW(Optimizer):
                 # save the gradient update and the weights
                 if self.should_save_weights_for_layer(p_name) and self.should_save_now(state["step"] - 1):
                     if p_name not in self.grad_dict.keys():
-                        if state["step"] - 1 == 0:
-                            optim_name = self.__class__.__name__
-                            print(f"[{optim_name}] Save gradients for layer:\t{p_name}\t{grad.shape}")
+                        # if state["step"] - 1 == 0:
+                        #     optim_name = self.__class__.__name__
+                        #     print(f"[{optim_name}] Save gradients for layer:\t{p_name}\t{grad.shape}")
 
                         self.grad_dict[p_name] = np.zeros((self.save_every_N_steps, *grad.shape), dtype=np.float16)
                         self.p_dict[p_name] = np.zeros((self.save_every_N_steps, *p.data.shape), dtype=np.float16)
@@ -192,6 +268,14 @@ class AdamW(Optimizer):
                     self.p_dict[p_name][self.partial_saved_steps] = p.data.detach().cpu().float().numpy()
                     self.lr_dict[p_name][self.partial_saved_steps] = step_size
                     self.step_dict[p_name][self.partial_saved_steps] = state["step"] - 1
+
+                    optim_name = self.__class__.__name__
+                    step = state["step"] - 1
+                    msg = f"[{optim_name}, step={step}] Added update, weight, lr and step for layer:\t{p_name}\t{grad.shape}"
+                    if self.logger:
+                        self.logger.info(msg)
+                    else:
+                        print(msg)
 
                 p.add_(norm_grad, alpha=-step_size)
 
@@ -206,78 +290,5 @@ class AdamW(Optimizer):
                 if group["weight_decay"] > 0.0:
                     p.add_(p, alpha=(-group["lr"] * group["weight_decay"]))
 
-        if self.should_save_now(state["step"] - 1):
-            self.partial_saved_steps += 1
-
-        # for gradient saving
-        if self.partial_saved_steps % self.save_every_N_steps == 0 and self.partial_saved_steps > 0:
-
-            optim_name = self.__class__.__name__
-            gradient_path = os.path.join(self.log_folder, f"{self.name}_{optim_name}_weights_and_updates.h5")
-
-            # Open or create an HDF5 file
-            with h5py.File(gradient_path, 'a') as f:  # 'a' mode allows appending data
-                pbar = tqdm(self.grad_dict.keys(), desc='Saving weights and updates')
-                for layer_name in pbar:
-                    layer_shape = self.grad_dict[layer_name].shape
-                    layer_size = sys.getsizeof(self.grad_dict[layer_name]) / 1024 ** 2
-                    pbar.set_description(f"Saving gradients for {layer_name} ({layer_size:.2f} MB)")
-                    # Create a dataset to store the gradients of each layer
-                    if f"{layer_name}_g" not in f:
-                        # f.create_dataset(layer_name, data=gradient, compression="gzip", chunks=True)
-                        dset_g = f.create_dataset(
-                            layer_name + '_g',
-                            shape=(0, *layer_shape[-2:]),  # Initial shape
-                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
-                            dtype='float16',
-                            compression="gzip"  # Optional compression
-                        )
-                        dset_p = f.create_dataset(
-                            layer_name + '_p',
-                            shape=(0, *layer_shape[-2:]),  # Initial shape
-                            maxshape=(None, *layer_shape[-2:]),  # Allow expansion along axis 0
-                            dtype='float16',
-                            compression="gzip"  # Optional compression
-                        )
-                        dset_lr = f.create_dataset(
-                            layer_name + '_lr',
-                            shape=(0, 1),  # Initial shape
-                            maxshape=(None, 1),  # Allow expansion along axis 0
-                            dtype='float16',
-                            compression="gzip"  # Optional compression
-                        )
-                        dset_step = f.create_dataset(
-                            layer_name + '_step',
-                            shape=(0, 1),  # Initial shape
-                            maxshape=(None, 1),  # Allow expansion along axis 0
-                            dtype='uint16',
-                            compression="gzip"  # Optional compression
-                        )
-                    else:
-                        dset_g = f[layer_name + '_g']
-                        dset_p = f[layer_name + '_p']
-                        dset_lr = f[layer_name + '_lr']
-                        dset_step = f[layer_name + '_step']
-
-                    # Resize the dataset to accommodate new data
-                    current_size = dset_g.shape[0]
-                    new_size = current_size + layer_shape[0]
-                    dset_g.resize(new_size, axis=0)
-                    dset_p.resize(new_size, axis=0)
-                    dset_lr.resize(new_size, axis=0)
-                    dset_step.resize(new_size, axis=0)
-
-                    # Write new data at the end of the dataset
-                    dset_g[current_size:new_size] = self.grad_dict[layer_name]
-                    dset_p[current_size:new_size] = self.p_dict[layer_name]
-                    dset_lr[current_size:new_size] = self.lr_dict[layer_name]
-                    dset_step[current_size:new_size] = self.step_dict[layer_name]
-
-            print("Saved at", gradient_path)
-            self.grad_dict = {}
-            self.p_dict = {}
-            self.lr_dict = {}
-            self.step_dict = {}
-            self.partial_saved_steps = 0
 
         return loss
