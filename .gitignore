@@ -1,5 +1,4 @@
 *.pyc
 .idea
 wandb
-logs
-logs_old
+logs*
