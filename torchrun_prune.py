@@ -102,6 +102,8 @@ def evaluate_model(model, preprocess_batched, pad_idx, device, batch_size):
     )
     val_data_mapped.batch = lambda batch_size: training_utils.batch_fn(val_data_mapped, batch_size)
 
+    # target_eval_tokens = 1_000
+    # print("DEBUGGING, TINY EVAL!!")
     target_eval_tokens = 10_000_000
     evaluated_on_tokens = 0
     total_loss = torch.tensor(0.0).to(device)
@@ -127,7 +129,7 @@ def evaluate_model(model, preprocess_batched, pad_idx, device, batch_size):
     # gathered_losses = [torch.zeros_like(total_loss) for _ in range(world_size)]
     # dist.all_gather(gathered_losses, total_loss)
     # total_loss = sum([t.item() for t in gathered_losses]) / world_size
-    perplexity = np.exp(total_loss)
+    perplexity = np.exp(total_loss.item())
 
     return total_loss, evaluated_on_tokens, perplexity
 
@@ -191,7 +193,8 @@ def main(args):
     assert args.sparsity is not None, "Must specify the sparsity"
 
     # set saving dir
-    args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
+    # args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
+    args.save_dir = f"{args.save_dir}/model_pruned_sparsity_{args.sparsity}"
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -314,11 +317,11 @@ def main(args):
 
     logger.info("Training finished")
 
-    current_model_directory = f"{args.save_dir}/model_pruned_sparsity_{args.sparsity_level}"
     if global_rank == 0: # and not os.path.exists(current_model_directory):
-        logger.info(f"Saving model to {current_model_directory}, sparsity {args.sparsity_level}")
+        logger.info(f"Saving model to {args.save_dir}, sparsity {args.sparsity}")
         os.makedirs(args.save_dir, exist_ok=True)
-        model.module.save_pretrained(current_model_directory)
+        # model.module.save_pretrained(args.save_dir)
+        model.save_pretrained(args.save_dir)
 
     # Final evaluation
     logger.info("Running final evaluation")
