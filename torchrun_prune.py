@@ -206,7 +206,7 @@ def main(args):
     # world_size = int(os.environ["WORLD_SIZE"])
     # torch.cuda.set_device(local_rank)
     #
-    # logger.add(os.path.join(args.save_dir, 'log.txt'))
+    logger.add(os.path.join(args.save_dir, 'log_pruning.txt'))
     #
     # logger.info(f"Global rank {global_rank}, local rank {local_rank}, device: {torch.cuda.current_device()}")
     #

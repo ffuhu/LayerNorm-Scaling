@@ -130,27 +130,33 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
     with h5py.File(gradients_path, 'r') as f:
         grad_key = f"{layer_name}_g"
 
+        grad_cum_not_pruned = np.zeros((~pruned_mask).sum(), dtype=np.float32)
+        grad_cum_pruned = np.zeros(pruned_mask.sum(), dtype=np.float32)
         grad_norms_over_time_not_pruned = np.zeros((len(steps_to_analyze), (~pruned_mask).sum()), dtype=np.float32)
-        grad_norms_over_time = np.zeros((len(steps_to_analyze), pruned_mask.sum()), dtype=np.float32)
+        grad_norms_over_time_pruned = np.zeros((len(steps_to_analyze), pruned_mask.sum()), dtype=np.float32)
         for i_step, step in enumerate(tqdm(steps_to_analyze, desc=f"Computing gradients for layer {layer_name}")):
             # Gradients are usually stored as [step, ...weight_shape...]
             grads = f[grad_key][i_step]  # shape: same as weights
             grads = torch.tensor(grads)
-            # pruned weights
+            # pruned weights norms
             pruned_grads = grads[pruned_mask]
-            grad_norms = pruned_grads.abs().numpy()
-            grad_norms_over_time[i_step] = grad_norms
-            # not pruned weights
+            grad_norms_pruned = pruned_grads.abs().numpy()
+            grad_norms_over_time_pruned[i_step] = grad_norms_pruned
+            # not pruned weights norms
             not_pruned_grads = grads[~pruned_mask]
             grad_norms_not_pruned = not_pruned_grads.abs().numpy()
             grad_norms_over_time_not_pruned[i_step] = grad_norms_not_pruned
+            # pruned weights cumulative
+            grad_cum_pruned += pruned_grads.numpy()
+            # not pruned weights cumulative
+            grad_cum_not_pruned += not_pruned_grads.numpy()
 
 
     # mean over time - pruned and not pruned
-    means = np.mean(grad_norms_over_time, axis=1)
+    means_pruned = np.mean(grad_norms_over_time_pruned, axis=1)
     means_not_pruned = np.mean(grad_norms_over_time_not_pruned, axis=1)
     plt.figure()
-    plt.plot(steps_to_analyze, means, 'r')
+    plt.plot(steps_to_analyze, means_pruned, 'r')
     plt.plot(steps_to_analyze, means_not_pruned, 'b')
     plt.xlabel('Step')
     plt.ylabel('Mean Gradient Norm')
@@ -158,7 +164,7 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
     plt.legend()
     plt.show()
 
-    # Optionally: plot histogram at a few steps
+    # plot grad norms - pruned vs not pruned
     # for i, step in enumerate(steps_to_analyze[::10]):
     for i, step in enumerate([0, len(steps_to_analyze) // 2, -1]):
         step = steps_to_analyze[step]
@@ -172,7 +178,7 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
 
         # Plotting the first histogram
         plt.hist(
-            grad_norms_over_time[steps_to_analyze.index(step)],
+            grad_norms_over_time_pruned[steps_to_analyze.index(step)],
             bins=50,  # Number of bins
             density=True,  # Normalize to form a probability density
             alpha=0.6,  # Transparency
@@ -205,6 +211,45 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
         plt.grid(True, linestyle="--", alpha=0.7)
         plt.show()
 
+    # plot grad cums - pruned vs not pruned
+    plt.figure(figsize=(10, 6))
+
+    # Plotting the first histogram
+    plt.hist(
+        grad_cum_pruned,
+        bins=50,  # Number of bins
+        density=True,  # Normalize to form a probability density
+        alpha=0.6,  # Transparency
+        color="blue",
+        label="Gradients of pruned weights",
+    )
+
+    # Plotting the second histogram
+    plt.hist(
+        grad_cum_not_pruned,
+        bins=50,
+        density=True,
+        alpha=0.6,
+        color="red",
+        label="Gradients of NOT pruned weights",
+    )
+
+    plt.title(f'Cumulative Gradient - {layer_name}')
+    plt.xlabel("Cumulative Gradient")
+    plt.ylabel("Count")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.7)
+    plt.show()
+
+    return {'grad_means_pruned': means_pruned,
+            'grad_means_not_pruned': means_not_pruned,
+            'grad_norms_over_time_pruned': grad_norms_over_time_pruned,
+            'grad_norms_over_time_not_pruned': grad_norms_over_time_not_pruned,
+            'grad_cum_pruned': grad_cum_pruned,
+            'grad_cum_not_pruned': grad_cum_not_pruned,
+            }
+
+
 
 def main(args):
 
@@ -230,27 +275,35 @@ def main(args):
     else:
         model = LlamaForCausalLM(model_config)
 
+    # to store metrics
+    metrics = {}
     pcnt_effective_weights, effective_weights_per_layer, pcnt_effective_weights_per_layer = {}, {}, {}
 
-    # list_of_update_steps = np.arange(1, 17) * 10_000
-    # for update_step in list_of_update_steps:
-    #
-    #     checkpoint_path = os.path.join(args.ckpts_folder, f"model_{update_step}/pytorch_model.bin")
-    #     model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
-    #     print(f"Model for update_step {update_step} successfully loaded (strict=True policy)")
-    #
-    #     device = f"cuda:0"
-    #     if args.dtype in ["bf16", "bfloat16"]:
-    #         model = model.to(device=device, dtype=torch.bfloat16)
-    #     else:
-    #         model = model.to(device=device)
-    #
-    #     pcnt_effective_weights_model, effective_weights_per_layer_model, pcnt_effective_weights_per_layer_model = (
-    #         check_effective_weights(model, args.threshold))
-    #
-    #     pcnt_effective_weights[update_step] = pcnt_effective_weights_model
-    #     effective_weights_per_layer[update_step] = effective_weights_per_layer_model
-    #     pcnt_effective_weights_per_layer[update_step] = pcnt_effective_weights_per_layer_model
+    list_of_update_steps = np.arange(1, 17) * 10_000
+    for update_step in list_of_update_steps:
+
+        checkpoint_path = os.path.join(args.ckpts_folder, f"model_{update_step}/pytorch_model.bin")
+        model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
+        print(f"Model for update_step {update_step} successfully loaded (strict=True policy)")
+
+        device = f"cuda:0"
+        if args.dtype in ["bf16", "bfloat16"]:
+            model = model.to(device=device, dtype=torch.bfloat16)
+        else:
+            model = model.to(device=device)
+
+        pcnt_effective_weights_model, effective_weights_per_layer_model, pcnt_effective_weights_per_layer_model = (
+            check_effective_weights(model, args.threshold))
+
+        pcnt_effective_weights[update_step] = pcnt_effective_weights_model
+        effective_weights_per_layer[update_step] = effective_weights_per_layer_model
+        pcnt_effective_weights_per_layer[update_step] = pcnt_effective_weights_per_layer_model
+
+    metrics = {
+        'pcnt_effective_weights': pcnt_effective_weights,
+        'effective_weights_per_layer': effective_weights_per_layer,
+        'pcnt_effective_weights_per_layer': pcnt_effective_weights_per_layer,
+    }
 
     # inspect gradients
     pruned_layers = get_pruned_names(model)
@@ -259,13 +312,20 @@ def main(args):
 
         if layer_name not in pruned_layers: continue
 
-        analyze_pruned_gradients(
+        metrics_gradients_layer = analyze_pruned_gradients(
             model,
             gradients_path,
             layer_name,
             sparsity=args.sparsity,
             steps_to_analyze=steps_to_analyze
         )
+
+        metrics['metrics_gradients_layer'] = {}
+        metrics['metrics_gradients_layer'][layer_name] = metrics_gradients_layer
+
+    pass
+
+
 
 
 
