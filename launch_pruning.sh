@@ -40,22 +40,22 @@ sparsities=(0.05 0.1 0.2 0.3 0.4 0.5)
 
 # checkpoints
 ckpts=(
-./logs/ew_130m_save0-5-11__adam_mini_lr0.0001_wd0.1_seed1/model_160001/
-./logs/ew_130m_save0-5-11__adam_mini_lr0.0005_wd0.1_seed1/model_160001/
-./logs/ew_130m_save0-5-11__adam_mini_lr0.001_wd0.1_seed1/model_160001/
-./logs/ew_130m_save0-5-11__adam_mini_lr0.003_wd0.1_seed1/model_160001/
-./logs/ew_130m_save0-5-11__adamw_lr0.0001_wd0.1_seed1/model_160001/
-./logs/ew_130m_save0-5-11__adamw_lr0.0005_wd0.1_seed1/model_160001/
-./logs/ew_130m_save0-5-11__adamw_lr0.001_wd0.1_seed1/model_160001/
-./logs/ew_130m_save0-5-11__adamw_lr0.003_wd0.1_seed1/model_160001/
-#./logs/ew_130m_save0-5-11__sgd_lr0.01_wd0.1_seed1/model_160001/
-#./logs/ew_130m_save0-5-11__sgd_lr0.05_wd0.1_seed1/model_160001/
-#./logs/ew_130m_save0-5-11__sgd_lr0.1_wd0.1_seed1/model_160001/
-#./logs/ew_130m_save0-5-11__sgd_lr0.5_wd0.1_seed1/model_160001/
-#./logs/ew_130m_save0-5-11__muon_lr0.0001_wd0.1_seed1/model_160001/
-#./logs/ew_130m_save0-5-11__muon_lr0.0005_wd0.1_seed1/model_160001/
-#./logs/ew_130m_save0-5-11__muon_lr0.001_wd0.1_seed1/model_160001/
-#./logs/ew_130m_save0-5-11__muon_lr0.003_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adam_mini_lr0.0001_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adam_mini_lr0.0005_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adam_mini_lr0.001_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adam_mini_lr0.003_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adamw_lr0.0001_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adamw_lr0.0005_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adamw_lr0.001_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adamw_lr0.003_wd0.1_seed1/model_160001/
+./logs/ew_130m_save0-5-11__muon_lr0.0001_wd0.0005_seed1/model_160001/
+./logs/ew_130m_save0-5-11__muon_lr0.0005_wd0.0005_seed1/model_160001/
+./logs/ew_130m_save0-5-11__muon_lr0.001_wd0.0005_seed1/model_160001/
+./logs/ew_130m_save0-5-11__muon_lr0.003_wd0.0005_seed1/model_160001/
+./logs/ew_130m_save0-5-11__sgd_lr0.01_wd0.0005_seed1/model_160001/
+./logs/ew_130m_save0-5-11__sgd_lr0.05_wd0.0005_seed1/model_160001/
+./logs/ew_130m_save0-5-11__sgd_lr0.1_wd0.0005_seed1/model_160001/
+./logs/ew_130m_save0-5-11__sgd_lr0.5_wd0.0005_seed1/model_160001/
 )
 
 for ckpt in "${ckpts[@]}"; do
