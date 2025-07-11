@@ -1,4 +1,5 @@
 import os
+import sys
 # --model_config configs/llama_130m.json --lr 1e-4 --batch_size 32 --total_batch_size 64 --num_training_steps 160000 --warmup_steps 2000 --dtype bfloat16 --eval_every 1000 --save_every 1000 --optimizer adamw --beta1 0.98 --weight_decay 0.1 --grad_clipping 0.0 --run_name ew_130m_save0-5-11_ --save_dir logs --layers_to_save layers.0 layers.5 layers.11 --save_every_N_steps 10
 
 import time
@@ -433,6 +434,10 @@ def main(args):
 
         if global_step % args.gradient_accumulation != 0:
             continue
+
+        if torch.isnan(loss):
+            logger.info('Loss is nan. Aborting execution...')
+            sys.exit(1)
 
         # The below code is only executed during the update step
 
