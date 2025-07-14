@@ -113,12 +113,12 @@ class SOAP(optim.Optimizer):
             120_000: 4_000,  # 10
             140_000: 1_000,  # 20
         }
-        # FOR TESTING ONLY!!!:
-        self.saving_schedule = {
-            0: 2,   # 20
-            100: 10,  # 20
-        }
-        print('\n\n\nWARNING: TESTING WITH SAVING SCHEDULE!!!\n\n\n')
+        # # FOR TESTING ONLY!!!:
+        # self.saving_schedule = {
+        #     0: 2,   # 20
+        #     100: 10,  # 20
+        # }
+        # print('\n\n\nWARNING: TESTING WITH SAVING SCHEDULE!!!\n\n\n')
 
     def should_save_now(self, step):
         saving_stages = list(self.saving_schedule.keys())
@@ -387,7 +387,7 @@ class SOAP(optim.Optimizer):
             if not precondition_1d or grad.shape[0] > max_precond_dim:
                 state['GG'].append([])
             else:
-                state['GG'].append(torch.zeros(grad.shape[0], grad.shape[0], device=grad.device))
+                state['GG'].append(torch.zeros(grad.shape[0], grad.shape[0], device=grad.device, dtype=grad.dtype))
         else:
             if merge_dims:
                 grad = self.merge_dims(grad, max_precond_dim)
@@ -396,7 +396,7 @@ class SOAP(optim.Optimizer):
                 if sh > max_precond_dim:
                     state['GG'].append([])
                 else:
-                    state['GG'].append(torch.zeros(sh, sh, device=grad.device))
+                    state['GG'].append(torch.zeros(sh, sh, device=grad.device, dtype=grad.dtype))
 
         state['Q'] = None  # Will hold all the eigenbases of the preconditioner.
         state['precondition_frequency'] = precondition_frequency

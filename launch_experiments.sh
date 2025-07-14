@@ -159,7 +159,36 @@ case "$SLURM_ARRAY_TASK_ID" in
     weight_decay=0.0005
     learning_rate=1e-3
     ;;
-
+  30)
+    optimizer="soap"
+    weight_decay=0.1
+    learning_rate=1e-4
+    ;;
+  31)
+    optimizer="soap"
+    weight_decay=0.1
+    learning_rate=5e-4
+    ;;
+  32)
+    optimizer="soap"
+    weight_decay=0.1
+    learning_rate=1e-3
+    ;;
+  33)
+    optimizer="soap"
+    weight_decay=0.1
+    learning_rate=3e-3
+    ;;
+  34)
+    optimizer="soap"
+    weight_decay=0.1
+    learning_rate=1e-2
+    ;;
+  35)
+    optimizer="soap"
+    weight_decay=0.1
+    learning_rate=1e-1
+    ;;
 
   *)
     echo "Number not recognized. Please enter 1-16."
