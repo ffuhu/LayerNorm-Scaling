@@ -21,6 +21,7 @@ from optims.sgd import SGD
 from optims.adamw import AdamW
 from optims.adam_mini import Adam_mini
 from optims.muon import SingleDeviceMuonWithAuxAdam
+from optims.soap import SOAP
 # from torch.optim.sgd import SGD
 
 import datasets
@@ -79,6 +80,7 @@ def parse_args(args):
     parser.add_argument("--beta2", type=float, default=0.999)
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--eps", type=float, default=1e-8)
+    parser.add_argument("--precondition_frequency", type=int, default=50)
 
     # GaLore parameters
     parser.add_argument("--rank", type=int, default=128)
@@ -382,6 +384,15 @@ def main(args):
                                                 log_folder=args.save_dir,
                                                 logger=logger,
                                                 )
+    elif args.optimizer.lower() == 'soap':
+        optimizer = SOAP(model.named_parameters(), lr=args.lr, weight_decay=args.weight_decay,
+                         precondition_frequency=args.precondition_frequency,
+                         betas=(args.beta1, args.beta2), eps=args.eps,
+                         save_every_N_steps=args.save_every_N_steps,
+                         layers_to_save=args.layers_to_save,
+                         log_folder=args.save_dir,
+                         logger=logger,
+                         )
 
     else:
         raise ValueError(f"Optimizer {args.optimizer} not supported")

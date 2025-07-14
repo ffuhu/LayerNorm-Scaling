@@ -249,7 +249,25 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
             'grad_cum_not_pruned': grad_cum_not_pruned,
             }
 
+def compute_weight_distributions(model):
 
+    #TODO
+    weight_ditributions = {}
+    for name, tensor in model.named_parameters():
+        if name in masked_names:
+            layer_total_params = tensor.numel()
+            layer_total_effective_weights = torch.sum(tensor > threshold).item()
+            total_params += layer_total_params
+            total_effective_weights += layer_total_effective_weights
+            # Calculate effective weights
+            pcnt_layer_total_effective_weights = layer_total_effective_weights / layer_total_params
+            effective_weights_per_layer[name] = layer_total_effective_weights
+            pcnt_effective_weights_per_layer[name] = pcnt_layer_total_effective_weights
+
+    pcnt_effective_weights = total_effective_weights / total_params
+    return pcnt_effective_weights, effective_weights_per_layer, pcnt_effective_weights_per_layer
+
+    return weight_distributions
 
 def main(args):
 
@@ -275,8 +293,10 @@ def main(args):
     else:
         model = LlamaForCausalLM(model_config)
 
+    # compute weighr distributions
+    weight_distributions = compute_weight_distributions(model)
+
     # to store metrics
-    metrics = {}
     pcnt_effective_weights, effective_weights_per_layer, pcnt_effective_weights_per_layer = {}, {}, {}
 
     list_of_update_steps = np.arange(1, 17) * 10_000

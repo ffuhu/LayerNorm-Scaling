@@ -56,6 +56,13 @@ ckpts=(
 ./logs/ew_130m_save0-5-11__sgd_lr0.05_wd0.0005_seed1/model_160001/
 ./logs/ew_130m_save0-5-11__sgd_lr0.1_wd0.0005_seed1/model_160001/
 ./logs/ew_130m_save0-5-11__sgd_lr0.5_wd0.0005_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adam_mini_lr0.1_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adam_mini_lr0.01_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adamw_lr0.1_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__adamw_lr0.01_wd0.1_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__muon_lr0.1_wd0.0005_seed1/model_160001/
+#./logs/ew_130m_save0-5-11__muon_lr0.01_wd0.0005_seed1/model_160001/
+
 )
 
 for ckpt in "${ckpts[@]}"; do
