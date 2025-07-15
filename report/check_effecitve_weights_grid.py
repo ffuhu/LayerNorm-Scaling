@@ -27,22 +27,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def parse_args(args):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_config", type=str, required=True)
-    parser.add_argument("--use_hf_model", default=False, action="store_true")
-    parser.add_argument("--dtype", type=str, default="bfloat16" if torch.cuda.is_bf16_supported() else "float32")
-    parser.add_argument("--ckpts_folder", type=str, default=None)
-    parser.add_argument("--save_dir", type=str, default=None)
-    parser.add_argument("--threshold", type=float, default=1e-3)
-    parser.add_argument("--sparsity", type=float, default=None)
-    parser.add_argument("--seed", type=int, default=1)
-
-    args = parser.parse_args(args)
-
-    return args
-
-
 def get_pruned_names(model):
     masked_names = []
     for name, tensor in model.named_parameters():
@@ -339,19 +323,9 @@ def compute_weight_distributions(model, checkpoint_path):
 
 def run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold):
 
-    experiment = 'ew_130m_save0-5-11__adam_mini_lr0.0001_wd0.1_seed1'
-    print("DEBUG; REMOVE!!! (l.331)")
-
-    # ==================================================================================================================
-    # compute weight distributions
-    # ==================================================================================================================
-    update_step = 160001
-    checkpoint_path = os.path.join(ckpts_folder, experiment, f"model_{update_step}/pytorch_model.bin")
-    if not os.path.isfile(checkpoint_path):
-        print(f"FILE: {checkpoint_path} not found!")
-        return
-    model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
-    compute_weight_distributions(model, checkpoint_path)
+    # experiment = 'ew_130m_save0-5-11__adam_mini_lr0.0001_wd0.1_seed1'
+    # print("DEBUG; REMOVE!!! (l.331)")
+    print(experiment)
 
     # ==================================================================================================================
     # compute effective weights
@@ -386,27 +360,28 @@ def run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold):
         'pcnt_effective_weights_per_layer': pcnt_effective_weights_per_layer,
     }
 
-    # Create subplots
-    fig, ax = plt.subplots(figsize=(12, 12))
-
-    ax.plot(pcnt_effective_weights.keys(), pcnt_effective_weights.values())
-
-    ax.set_xlabel('Training step')
-    ax.set_ylabel('% of effective weights')
-    ax.grid(True, alpha=0.9)
-
-    plt.tight_layout()
-
-    # Add main title AFTER tight_layout with proper positioning
-    exp_name = checkpoint_path.split(os.sep)
-    exp_name = f"{exp_name[-3]}"
-    fig.suptitle(f'{exp_name} - threshold={threshold:.6f}', fontsize=16, fontweight='bold', y=0.98)
-
-    # Adjust layout to make room for the title
-    plt.subplots_adjust(top=0.94)
-    # plt.show()
-    plt.savefig(exp_name + f'_effective_weights.png')
-    plt.close()
+    # # Create subplots
+    # fig, ax = plt.subplots(figsize=(12, 12))
+    #
+    # ax.plot(pcnt_effective_weights.keys(), pcnt_effective_weights.values())
+    #
+    # ax.set_xlabel('Training step')
+    # ax.set_ylabel('% of effective weights')
+    # ax.grid(True, alpha=0.9)
+    #
+    # plt.tight_layout()
+    #
+    # # Add main title AFTER tight_layout with proper positioning
+    # exp_name = checkpoint_path.split(os.sep)
+    # exp_name = f"{exp_name[-3]}"
+    # fig.suptitle(f'{exp_name} - threshold={threshold:.6f}', fontsize=16, fontweight='bold', y=0.98)
+    #
+    # # Adjust layout to make room for the title
+    # plt.subplots_adjust(top=0.94)
+    # # plt.show()
+    # plt.savefig(exp_name + f'_effective_weights.png')
+    # plt.close()
+    return metrics
 
 
     # # ==================================================================================================================
@@ -438,10 +413,6 @@ def run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold):
 
 def main():
 
-    # set saving dir
-    # args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
-    # --model_config ../configs/llama_130m.json --ckpts_folder ../logs_server/ew_130m_save0-5-11__adam_mini_lr0.0001_wd0.1_seed1/ --threshold 1e-3 --sparsity 0.3
-
     model_config = '../configs/llama_130m.json'
     ckpts_folder = '../logs_server/'
     seed = 1
@@ -465,10 +436,60 @@ def main():
     ckpts = glob.glob(ckpts_folder + 'ew*/**/*.txt', recursive=True)
     experiments = {ckpt.split(os.sep)[2] for ckpt in ckpts}
 
+    metrics = {}
     for experiment in experiments:
+        metrics[experiment] = run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold)
 
-        run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold)
+    # make the plot
+    opts = ['adam_mini', 'adamw', 'sgd', 'muon']
+    metrics_opts = {}
+    for opt in opts:
+        metrics_opts[opt] = {k: v for k, v in metrics.items() if opt in k}
 
+    # Create subplots
+    n_plots = 1
+    nrows = 1
+    ncols = len(opts)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 6 * nrows))
+
+    # Plot each experiment effective weights
+    for i, opt in enumerate(opts):
+        ax = axes[i]
+
+
+        lrs_ew = [(float(re.search(r'_lr([0-9.]+)', k).group(1)), v['pcnt_effective_weights'])
+                  for k, v in metrics_opts[opt].items()]
+
+        for lr, step_ew in lrs_ew:
+            steps = [f"{v//1_000}k" for v in list(step_ew.keys())]
+            ews = list(step_ew.values())
+
+            ax.plot(steps, ews)
+
+        # Formatting
+        ax.set_title(f"{opt} {lr}", fontsize=10, fontweight='bold')
+        ax.set_xlabel('Weight Value')
+        ax.set_ylabel('Update step')
+        ax.grid(True, alpha=0.9)
+        ax.set_ylim(0, 1)
+
+        n_plots += 1
+
+    # Hide unused subplots
+    for i in range(n_plots, len(axes)):
+        axes[i].set_visible(False)
+
+    # plt.tight_layout()
+    plt.legend()
+
+    # Add main title AFTER tight_layout with proper positioning
+    fig.suptitle(f'Effective weights', fontsize=16, fontweight='bold', y=0.98)
+
+    # Adjust layout to make room for the title
+    # plt.subplots_adjust(top=0.94)
+    # plt.show()
+    plt.savefig(f'effective_weights.png')
+    plt.close()
 
 
 
@@ -476,5 +497,4 @@ def main():
 
 if __name__ == "__main__":
     print("Starting script")
-    # args = parse_args(None)
     main()

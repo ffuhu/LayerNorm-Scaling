@@ -2,6 +2,7 @@ import os
 import re
 import glob
 import matplotlib.pyplot as plt
+import numpy as np
 
 # GATHER LOSSES OF EVERY MODEL WITHOUT PRUNING
 
@@ -24,8 +25,8 @@ for log_path in files:
         lr = re.search(r'_lr([0-9.]+)', text).group(1)
         try:
             eval_loss = re.search(r'Final eval loss: ([0-9]{1,4}\.[0-9]+)', text).group(1)
-        except Exception:
-            eval_loss = 'ERROR'
+        except Exception as e:
+            eval_loss = np.nan
 
         if optimizer not in dict_losses:
             dict_losses[optimizer] = {}
@@ -37,8 +38,8 @@ for log_path in files:
 plt.figure(figsize=(12, 8))
 
 # Colors for each optimizer
-colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-markers = ['o', 's', '^', 'D']
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', 'yellow']
+markers = ['o', 's', '^', 'D', '*']
 
 # Plot each optimizer
 for i, (optimizer, results) in enumerate(dict_losses.items()):
@@ -65,13 +66,14 @@ plt.xlabel('Learning Rate', fontsize=12)
 plt.ylabel('Loss', fontsize=12)
 plt.title('Accuracy vs Learning Rate by Optimizer', fontsize=14, fontweight='bold')
 plt.xscale('log')  # Log scale for learning rates
-plt.grid(True, alpha=0.3)
+plt.grid(True, alpha=0.9)
 plt.legend(fontsize=11)
 
 # Add some styling
 plt.tight_layout()
-plt.show()
-
+# plt.show()
+plt.savefig('loss_by_opt_and_lr.png')
+plt.close()
 
 # GATHER LOSSES OF EVERY MODEL AFTER PRUNING
 
@@ -215,6 +217,8 @@ for optimizer_name, optimizer_data in dict_losses_after_pruning.items():
         ax.set_ylim(3, 11)
 
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    plt.savefig(f'loss_pruned_{optimizer_name}.png')
+    plt.close()
 
 print()
