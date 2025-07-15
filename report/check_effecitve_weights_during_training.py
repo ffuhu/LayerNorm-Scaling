@@ -249,25 +249,82 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
             'grad_cum_not_pruned': grad_cum_not_pruned,
             }
 
-def compute_weight_distributions(model):
+def compute_weight_distributions(model, checkpoint_path):
 
-    #TODO
-    weight_ditributions = {}
-    for name, tensor in model.named_parameters():
-        if name in masked_names:
-            layer_total_params = tensor.numel()
-            layer_total_effective_weights = torch.sum(tensor > threshold).item()
-            total_params += layer_total_params
-            total_effective_weights += layer_total_effective_weights
-            # Calculate effective weights
-            pcnt_layer_total_effective_weights = layer_total_effective_weights / layer_total_params
-            effective_weights_per_layer[name] = layer_total_effective_weights
-            pcnt_effective_weights_per_layer[name] = pcnt_layer_total_effective_weights
+    # load the model
+    # checkpoint_path = os.path.join(args.ckpts_folder, f"model_{update_step}/pytorch_model.bin")
+    # model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
 
-    pcnt_effective_weights = total_effective_weights / total_params
-    return pcnt_effective_weights, effective_weights_per_layer, pcnt_effective_weights_per_layer
 
-    return weight_distributions
+
+    blocks_to_plot = ['layers.0', 'layers.5', 'layers.9']
+
+
+    # Get all weight parameters
+    weight_layers = []
+    layer_names = []
+
+    for name, param in model.named_parameters():
+        if 'weight' in name and param.requires_grad and 'bn' not in name and any([block in name for block in blocks_to_plot]):
+            weight_layers.append(param.detach().cpu().numpy().flatten())
+            layer_names.append(name)
+
+    # Calculate grid size
+    n_layers = len(weight_layers)
+    cols = 9  # Number of columns
+    rows = (n_layers + cols - 1) // cols  # Calculate rows needed
+
+    # Create subplots
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
+
+    # Flatten axes array for easier indexing
+    if rows == 1:
+        axes = [axes] if cols == 1 else axes
+    else:
+        axes = axes.flatten()
+
+    # Plot each layer's weight distribution
+    for i, (weights, name) in enumerate(zip(weight_layers, layer_names)):
+        ax = axes[i]
+
+        # Create histogram
+        ax.hist(weights, bins=50, alpha=0.7, color='steelblue', edgecolor='black', linewidth=0.5)
+
+        # Formatting
+        ax.set_title(name, fontsize=10, fontweight='bold')
+        ax.set_xlabel('Weight Value')
+        ax.set_ylabel('Frequency')
+        ax.grid(True, alpha=0.9)
+
+        # Add statistics as text
+        mean_val = np.mean(weights)
+        std_val = np.std(weights)
+        ax.text(0.02, 0.98, f'μ={mean_val:.3f}\nσ={std_val:.3f}',
+                transform=ax.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    # Hide unused subplots
+    for i in range(n_layers, len(axes)):
+        axes[i].set_visible(False)
+
+    plt.tight_layout()
+
+    # Add main title AFTER tight_layout with proper positioning
+    exp_name = checkpoint_path.split(os.sep)
+    exp_name = f"{exp_name[-3]} {exp_name[-3]}"
+    fig.suptitle(f'Weight Distribution: {exp_name}', fontsize=16, fontweight='bold', y=0.98)
+
+    # Adjust layout to make room for the title
+    plt.subplots_adjust(top=0.94)
+    # plt.show()
+    plt.savefig(exp_name + f'_weight_dist_withwd.png')
+    plt.close()
+
+    print(f"Total layers with weights: {n_layers}")
+    print("Layer names:")
+    for i, name in enumerate(layer_names):
+        print(f"{i + 1:2d}. {name}")
+
 
 def main(args):
 
@@ -293,8 +350,11 @@ def main(args):
     else:
         model = LlamaForCausalLM(model_config)
 
-    # compute weighr distributions
-    weight_distributions = compute_weight_distributions(model)
+    # compute weight distributions
+    update_step = 160001
+    checkpoint_path = os.path.join(args.ckpts_folder, f"model_{update_step}/pytorch_model.bin")
+    model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
+    compute_weight_distributions(model, checkpoint_path)
 
     # to store metrics
     pcnt_effective_weights, effective_weights_per_layer, pcnt_effective_weights_per_layer = {}, {}, {}
