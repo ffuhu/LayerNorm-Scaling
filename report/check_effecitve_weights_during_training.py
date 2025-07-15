@@ -2,9 +2,11 @@ import os
 os.environ['NORM_TYPE'] = 'LNS'
 # --model_config configs/llama_130m.json --lr 1e-4 --batch_size 32 --total_batch_size 64 --num_training_steps 160000 --warmup_steps 2000 --dtype bfloat16 --eval_every 1000 --save_every 1000 --optimizer adamw --beta1 0.98 --weight_decay 0.1 --grad_clipping 0.0 --run_name ew_130m_save0-5-11_ --save_dir logs --layers_to_save layers.0 layers.5 layers.11 --save_every_N_steps 10
 
+import re
 import time
 import json
 import h5py
+import glob
 import random
 import argparse
 import numpy as np
@@ -121,7 +123,7 @@ def get_pruned_mask(tensor, sparsity):
     return mask.to(torch.bool)
 
 
-def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_to_analyze):
+def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_to_analyze, exp_name):
     # get pruned mask
     final_weights = dict(model.named_parameters())[layer_name].detach().cpu()
     pruned_mask = get_pruned_mask(final_weights, sparsity)  # shape: same as weights
@@ -162,7 +164,8 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
     plt.ylabel('Mean Gradient Norm')
     plt.title(f'Mean Gradient Norms for Pruned vs Not Pruned Weights: {layer_name}')
     plt.legend()
-    plt.show()
+    # plt.show()
+    plt.savefig(exp_name + f'_{layer_name}_gradient_norm_evolution.png')
 
     # plot grad norms - pruned vs not pruned
     # for i, step in enumerate(steps_to_analyze[::10]):
@@ -209,7 +212,8 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
         plt.ylabel("Count")
         plt.legend()
         plt.grid(True, linestyle="--", alpha=0.7)
-        plt.show()
+        # plt.show()
+        plt.savefig(exp_name + f'_{layer_name}_{step}_gradient_dist.png')
 
     # plot grad cums - pruned vs not pruned
     plt.figure(figsize=(10, 6))
@@ -239,7 +243,8 @@ def analyze_pruned_gradients(model, gradients_path, layer_name, sparsity, steps_
     plt.ylabel("Count")
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.7)
-    plt.show()
+    # plt.show()
+    plt.savefig(exp_name + f'_{layer_name}_cummulative_gradient.png')
 
     return {'grad_means_pruned': means_pruned,
             'grad_means_not_pruned': means_not_pruned,
@@ -254,8 +259,6 @@ def compute_weight_distributions(model, checkpoint_path):
     # load the model
     # checkpoint_path = os.path.join(args.ckpts_folder, f"model_{update_step}/pytorch_model.bin")
     # model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
-
-
 
     blocks_to_plot = ['layers.0', 'layers.5', 'layers.9']
 
@@ -284,7 +287,8 @@ def compute_weight_distributions(model, checkpoint_path):
         axes = axes.flatten()
 
     # Plot each layer's weight distribution
-    for i, (weights, name) in enumerate(zip(weight_layers, layer_names)):
+    for i, (weights, name) in enumerate(tqdm(zip(weight_layers, layer_names),
+                                        total=len(weight_layers), desc="Computing histograms")):
         ax = axes[i]
 
         # Create histogram
@@ -325,36 +329,22 @@ def compute_weight_distributions(model, checkpoint_path):
     for i, name in enumerate(layer_names):
         print(f"{i + 1:2d}. {name}")
 
+def run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold):
 
-def main(args):
+    experiment = 'ew_130m_save0-5-11__adam_mini_lr0.0001_wd0.1_seed1'
+    print("DEBUG; REMOVE!!! (l.331)")
 
-    # set saving dir
-    # args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
-
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-
-    steps_to_analyze = [*list(range(0, 21, 1)),
-                        *list(range(21, 41, 2)),
-                        *list(range(41, 80, 4)),
-                        *list(range(81, 121, 10)),
-                        *list(range(121, 140, 4)),
-                        *list(range(141,161, 1))]
-    gradients_path = os.path.join(args.ckpts_folder, 'None_Adam_mini_weights_and_updates.h5')
-    training_gradients = h5py.File(gradients_path)
-
-    model_config = AutoConfig.from_pretrained(args.model_config)
-    if args.use_hf_model:
-        model: HF_LlamaForCausalLM = AutoModelForCausalLM.from_config(model_config)
-    else:
-        model = LlamaForCausalLM(model_config)
-
+    # ==================================================================================================================
     # compute weight distributions
+    # ==================================================================================================================
     update_step = 160001
-    checkpoint_path = os.path.join(args.ckpts_folder, f"model_{update_step}/pytorch_model.bin")
+    checkpoint_path = os.path.join(ckpts_folder, experiment, f"model_{update_step}/pytorch_model.bin")
     model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
     compute_weight_distributions(model, checkpoint_path)
+
+    # ==================================================================================================================
+    # compute effective weights
+    # ==================================================================================================================
 
     # to store metrics
     pcnt_effective_weights, effective_weights_per_layer, pcnt_effective_weights_per_layer = {}, {}, {}
@@ -362,7 +352,7 @@ def main(args):
     list_of_update_steps = np.arange(1, 17) * 10_000
     for update_step in list_of_update_steps:
 
-        checkpoint_path = os.path.join(args.ckpts_folder, f"model_{update_step}/pytorch_model.bin")
+        checkpoint_path = os.path.join(ckpts_folder, experiment, f"model_{update_step}/pytorch_model.bin")
         model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"), strict=True)
         print(f"Model for update_step {update_step} successfully loaded (strict=True policy)")
 
@@ -373,7 +363,7 @@ def main(args):
             model = model.to(device=device)
 
         pcnt_effective_weights_model, effective_weights_per_layer_model, pcnt_effective_weights_per_layer_model = (
-            check_effective_weights(model, args.threshold))
+            check_effective_weights(model, threshold))
 
         pcnt_effective_weights[update_step] = pcnt_effective_weights_model
         effective_weights_per_layer[update_step] = effective_weights_per_layer_model
@@ -385,25 +375,88 @@ def main(args):
         'pcnt_effective_weights_per_layer': pcnt_effective_weights_per_layer,
     }
 
-    # inspect gradients
-    pruned_layers = get_pruned_names(model)
-    layer_names = list({'_'.join(layer_name.split('_')[:-1]) for layer_name in list(training_gradients.keys())})
-    for layer_name in layer_names:
+    # Create subplots
+    fig, ax = plt.subplots(figsize=(12, 12))
 
-        if layer_name not in pruned_layers: continue
+    ax.plot(pcnt_effective_weights.keys(), pcnt_effective_weights.values())
 
-        metrics_gradients_layer = analyze_pruned_gradients(
-            model,
-            gradients_path,
-            layer_name,
-            sparsity=args.sparsity,
-            steps_to_analyze=steps_to_analyze
-        )
+    ax.set_xlabel('Training step')
+    ax.set_ylabel('% of effective weights')
+    ax.grid(True, alpha=0.9)
 
-        metrics['metrics_gradients_layer'] = {}
-        metrics['metrics_gradients_layer'][layer_name] = metrics_gradients_layer
+    plt.tight_layout()
 
-    pass
+    # Add main title AFTER tight_layout with proper positioning
+    exp_name = checkpoint_path.split(os.sep)
+    exp_name = f"{exp_name[-3]}"
+    fig.suptitle(f'{exp_name} - threshold={threshold:.6f}', fontsize=16, fontweight='bold', y=0.98)
+
+    # Adjust layout to make room for the title
+    plt.subplots_adjust(top=0.94)
+    # plt.show()
+    plt.savefig(exp_name + f'_effective_weights.png')
+    plt.close()
+
+
+    # # ==================================================================================================================
+    # # inspect gradients
+    # # ==================================================================================================================
+    # # load gradients
+    #
+    # gradients_path = glob.glob(os.path.join(ckpts_folder, experiment) + '/*.h5')[-1]
+    # training_gradients = h5py.File(gradients_path)
+    #
+    # pruned_layers = get_pruned_names(model)
+    # layer_names = list({'_'.join(layer_name.split('_')[:-1]) for layer_name in list(training_gradients.keys())})
+    # for layer_name in layer_names:
+    #
+    #     if layer_name not in pruned_layers: continue
+    #
+    #     metrics_gradients_layer = analyze_pruned_gradients(
+    #         model,
+    #         gradients_path,
+    #         layer_name,
+    #         sparsity=args.sparsity,
+    #         steps_to_analyze=steps_to_analyze,
+    #         exp_name=exp_name,
+    #     )
+    #
+    #     metrics['metrics_gradients_layer'] = {}
+    #     metrics['metrics_gradients_layer'][layer_name] = metrics_gradients_layer
+    # print('done')
+
+def main(args):
+
+    # set saving dir
+    # args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
+    # --model_config ../configs/llama_130m.json --ckpts_folder ../logs_server/ew_130m_save0-5-11__adam_mini_lr0.0001_wd0.1_seed1/ --threshold 1e-3 --sparsity 0.3
+
+    model_config = '../configs/llama_130m.json'
+    ckpts_folder = '../logs_server/'
+
+
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+
+    threshold = 1e-3
+    steps_to_analyze = [*list(range(0, 21, 1)),
+                        *list(range(21, 41, 2)),
+                        *list(range(41, 80, 4)),
+                        *list(range(81, 121, 10)),
+                        *list(range(121, 140, 4)),
+                        *list(range(141,161, 1))]
+
+    model_config = AutoConfig.from_pretrained(model_config)
+    model = LlamaForCausalLM(model_config)
+
+    # gather all experiment checkpoints
+    ckpts = glob.glob(ckpts_folder + 'ew*/**/*.txt', recursive=True)
+    experiments = {ckpt.split(os.sep)[2] for ckpt in ckpts}
+
+    for experiment in experiments:
+
+        run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold)
 
 
 

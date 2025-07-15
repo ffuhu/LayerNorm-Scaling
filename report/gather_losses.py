@@ -153,7 +153,8 @@ for optimizer_name, optimizer_data in dict_losses_after_pruning.items():
     n_lr = len(learning_rates)
 
     # Create subplots - 2 rows, 2 columns for 4 learning rates
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.suptitle(f'{optimizer_name.upper()} - Loss Before vs After Pruning', fontsize=16, fontweight='bold')
 
     # Flatten axes for easier indexing
@@ -162,35 +163,58 @@ for optimizer_name, optimizer_data in dict_losses_after_pruning.items():
     for i, lr in enumerate(learning_rates):
         ax = axes[i]
 
+        # # Extract data for this learning rate
+        # pruning_levels = []
+        # before_losses = []
+        # after_losses = []
+        #
+        # for pruning_level, losses in optimizer_data[lr].items():
+        #     pruning_levels.append(pruning_level)
+        #     before_losses.append(losses['before'])
+        #     after_losses.append(losses['after'])
+        #
+        # # Sort by pruning level
+        # sorted_data = sorted(zip(pruning_levels, before_losses, after_losses))
+        # pruning_levels, before_losses, after_losses = zip(*sorted_data)
+        #
+        # # Plot before and after losses
+        # ax.plot(pruning_levels, before_losses, '--', label='Before Pruning',
+        #         color='#2ca02c', linewidth=2), #, markersize=8)
+        # ax.plot(pruning_levels, after_losses, 's-', label='After Pruning',
+        #         color='#d62728', linewidth=2, markersize=8)
         # Extract data for this learning rate
         pruning_levels = []
-        before_losses = []
-        after_losses = []
-
-        for pruning_level, losses in optimizer_data[lr].items():
-            pruning_levels.append(float(pruning_level))
-            before_losses.append(losses['before'])
-            after_losses.append(losses['after'])
 
         # Sort by pruning level
-        sorted_data = sorted(zip(pruning_levels, before_losses, after_losses))
-        pruning_levels, before_losses, after_losses = zip(*sorted_data)
+        sorted_data = sorted(zip(dict_losses_after_pruning[optimizer_name][lr].keys(), dict_losses_after_pruning[optimizer_name][lr].values()))
+        try:
+            loss_before = float(sorted_data.pop(-1)[-1])
+            pruning_levels, losses_after = zip(*sorted_data)
+            pruning_levels = [float(pl) for pl in pruning_levels]
+            losses_after = [float(l) for l in losses_after]
+        except ValueError:
+            continue
 
         # Plot before and after losses
-        ax.plot(pruning_levels, before_losses, '--', label='Before Pruning',
-                color='#2ca02c', linewidth=2), #, markersize=8)
-        ax.plot(pruning_levels, after_losses, 's-', label='After Pruning',
+        ax.axhline(y=loss_before, linestyle='--', color='#2ca02c', linewidth=2, alpha=0.7, label='Before Pruning')
+        ax.plot(pruning_levels, losses_after, 's-', label='After Pruning',
                 color='#d62728', linewidth=2, markersize=8)
 
         ax.set_title(f'Learning Rate: {lr}', fontsize=12, fontweight='bold')
         ax.set_xlabel('Pruning Level', fontsize=10)
         ax.set_ylabel('Loss', fontsize=10)
-        ax.grid(True, alpha=0.3)
+        ax.grid(True)
         ax.legend()
 
         # Set x-axis to show all pruning levels
         ax.set_xticks(pruning_levels)
-        ax.set_xticklabels([f'{p:.1f}' for p in pruning_levels])
+        ax.set_xticklabels([f'{p:.2f}' for p in pruning_levels])
+        # ax.set_xticklabels([f'{p}' for p in pruning_levels])
+
+        # Set the y-axis limits
+        ax.set_ylim(3, 11)
 
     plt.tight_layout()
     plt.show()
+
+print()
