@@ -53,17 +53,17 @@ case "$SLURM_ARRAY_TASK_ID" in
   2)
     optimizer="adamw"
     weight_decay=0.1
-    learning_rate=5e-4
+    learning_rate=1e-3
     ;;
   3)
     optimizer="adamw"
     weight_decay=0.1
-    learning_rate=1e-3
+    learning_rate=1e-2
     ;;
   4)
     optimizer="adamw"
     weight_decay=0.1
-    learning_rate=3e-3
+    learning_rate=1e-1
     ;;
   5)
     optimizer="adam_mini"
@@ -73,141 +73,57 @@ case "$SLURM_ARRAY_TASK_ID" in
   6)
     optimizer="adam_mini"
     weight_decay=0.1
-    learning_rate=5e-4
+    learning_rate=1e-3
     ;;
   7)
     optimizer="adam_mini"
     weight_decay=0.1
-    learning_rate=1e-3
+    learning_rate=1e-2
     ;;
   8)
     optimizer="adam_mini"
     weight_decay=0.1
-    learning_rate=3e-3
+    learning_rate=1e-1
     ;;
   9)
     optimizer="sgd"
     weight_decay=0.0005
-    learning_rate=1e-2
+    learning_rate=1e-4
     ;;
   10)
     optimizer="sgd"
     weight_decay=0.0005
-    learning_rate=5e-2
+    learning_rate=1e-3
     ;;
   11)
     optimizer="sgd"
     weight_decay=0.0005
-    learning_rate=1e-1
+    learning_rate=1e-2
     ;;
   12)
     optimizer="sgd"
     weight_decay=0.0005
-    learning_rate=5e-1
+    learning_rate=1e-1
     ;;
   13)
-    optimizer="muon"
-    weight_decay=0.0005
+    optimizer="soap"
+    weight_decay=0.1
     learning_rate=1e-4
     ;;
   14)
-    optimizer="muon"
-    weight_decay=0.0005
-    learning_rate=5e-4
+    optimizer="soap"
+    weight_decay=0.1
+    learning_rate=1e-3
     ;;
   15)
-    optimizer="muon"
-    weight_decay=0.0005
-    learning_rate=1e-3
+    optimizer="soap"
+    weight_decay=0.1
+    learning_rate=1e-2
     ;;
   16)
-    optimizer="muon"
-    weight_decay=0.0005
-    learning_rate=3e-3
-    ;;
-  20)
-    optimizer="adamw"
-    weight_decay=0.1
-    learning_rate=1e-1
-    ;;
-  21)
-    optimizer="adamw"
-    weight_decay=0.1
-    learning_rate=1e-2
-    ;;
-  22)
-    optimizer="adam_mini"
-    weight_decay=0.1
-    learning_rate=1e-1
-    ;;
-  23)
-    optimizer="adam_mini"
-    weight_decay=0.1
-    learning_rate=1e-2
-    ;;
-  24)
-    optimizer="muon"
-    weight_decay=0.0005
-    learning_rate=1e-1
-    ;;
-  25)
-    optimizer="muon"
-    weight_decay=0.0005
-    learning_rate=1e-2
-    ;;
-  26)
-    optimizer="sgd"
-    weight_decay=0.0005
-    learning_rate=3e-3
-    ;;
-  27)
-    optimizer="sgd"
-    weight_decay=0.0005
-    learning_rate=1e-3
-    ;;
-  30)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=1e-4
-    ;;
-  31)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=5e-4
-    ;;
-  32)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=1e-3
-    ;;
-  33)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=3e-3
-    ;;
-  34)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=1e-2
-    ;;
-  35)
     optimizer="soap"
     weight_decay=0.1
     learning_rate=1e-1
-    ;;
-  40)
-    optimizer="sgd"
-    weight_decay=0.0005
-    learning_rate=1e-4
-    batch_size=32
-    total_batch_size=64
-    ;;
-  41)
-    optimizer="sgd"
-    weight_decay=0.0005
-    learning_rate=5e-4
-    batch_size=32
-    total_batch_size=64
     ;;
   # grid search sgd and adam
   50)

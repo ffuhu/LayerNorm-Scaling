@@ -3,3 +3,4 @@
 wandb
 logs*
 report/*.png
+report/*.json

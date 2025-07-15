@@ -76,9 +76,9 @@ def parse_args(args):
     parser.add_argument("--grad_clipping", type=float, default=1.0)
     parser.add_argument("--run_name", type=str, default="default")
     # optim parameters
-    parser.add_argument("--beta1", type=float, default=0.9)
+    parser.add_argument("--beta1", type=float, default=0.98)
     parser.add_argument("--beta2", type=float, default=0.999)
-    parser.add_argument("--momentum", type=float, default=0.9)
+    parser.add_argument("--momentum", type=float, default=0.98)
     parser.add_argument("--eps", type=float, default=1e-8)
     parser.add_argument("--precondition_frequency", type=int, default=50)
 
