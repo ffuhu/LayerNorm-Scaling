@@ -357,7 +357,7 @@ def run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold):
         print(f"Model for update_step {update_step} successfully loaded (strict=True policy)")
 
         device = f"cuda:0"
-        if args.dtype in ["bf16", "bfloat16"]:
+        if torch.cuda.is_bf16_supported():
             model = model.to(device=device, dtype=torch.bfloat16)
         else:
             model = model.to(device=device)
@@ -425,7 +425,7 @@ def run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold):
     #     metrics['metrics_gradients_layer'][layer_name] = metrics_gradients_layer
     # print('done')
 
-def main(args):
+def main():
 
     # set saving dir
     # args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
@@ -433,11 +433,11 @@ def main(args):
 
     model_config = '../configs/llama_130m.json'
     ckpts_folder = '../logs_server/'
+    seed = 1
 
-
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    random.seed(args.seed)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
     threshold = 1e-3
     steps_to_analyze = [*list(range(0, 21, 1)),
@@ -465,5 +465,5 @@ def main(args):
 
 if __name__ == "__main__":
     print("Starting script")
-    args = parse_args(None)
-    main(args)
+    # args = parse_args(None)
+    main()
