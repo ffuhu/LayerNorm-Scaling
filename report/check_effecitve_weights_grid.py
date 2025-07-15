@@ -464,10 +464,10 @@ def main():
             steps = [f"{v//1_000}k" for v in list(step_ew.keys())]
             ews = list(step_ew.values())
 
-            ax.plot(steps, ews)
+            ax.plot(steps, ews, label=f"{lr}")
 
         # Formatting
-        ax.set_title(f"{opt} {lr}", fontsize=10, fontweight='bold')
+        ax.set_title(f"{opt}", fontsize=10, fontweight='bold')
         ax.set_xlabel('Weight Value')
         ax.set_ylabel('Update step')
         ax.grid(True, alpha=0.9)
