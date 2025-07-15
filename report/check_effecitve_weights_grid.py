@@ -334,7 +334,7 @@ def run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold):
     # to store metrics
     pcnt_effective_weights, effective_weights_per_layer, pcnt_effective_weights_per_layer = {}, {}, {}
 
-    list_of_update_steps = np.arange(1, 17) * 10_000
+    list_of_update_steps = [i * 10_000 for i in range(1, 17)]
     for update_step in list_of_update_steps:
 
         checkpoint_path = os.path.join(ckpts_folder, experiment, f"model_{update_step}/pytorch_model.bin")
@@ -414,7 +414,7 @@ def run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold):
 def main():
 
     model_config = '../configs/llama_130m.json'
-    ckpts_folder = '../logs_server/'
+    ckpts_folder = '../logs/'
     seed = 1
 
     torch.manual_seed(seed)
@@ -436,9 +436,20 @@ def main():
     ckpts = glob.glob(ckpts_folder + 'ew*/**/*.txt', recursive=True)
     experiments = {ckpt.split(os.sep)[2] for ckpt in ckpts}
 
+    # print("DEBUG!!!!! l439")
+    # experiments = ['ew_130m_save0-5-11__adam_mini_lr0.0001_wd0.1_seed1']
+    # ckpts_folder = '../logs_server/'
+
     metrics = {}
     for experiment in experiments:
-        metrics[experiment] = run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold)
+        try:
+            metrics[experiment] = run_analysis(model, steps_to_analyze, ckpts_folder, experiment, threshold)
+        except:
+            print(f"Experiment {experiment} not found")
+            continue
+
+    with open('effective_weights.json', 'w') as f:
+        json.dump(metrics, f, indent=4)
 
     # make the plot
     opts = ['adam_mini', 'adamw', 'sgd', 'muon']
@@ -451,6 +462,7 @@ def main():
     nrows = 1
     ncols = len(opts)
     fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 6 * nrows))
+    colors = ["red", "green", "blue", "cyan", "magenta", "yellow"]
 
     # Plot each experiment effective weights
     for i, opt in enumerate(opts):
@@ -460,11 +472,12 @@ def main():
         lrs_ew = [(float(re.search(r'_lr([0-9.]+)', k).group(1)), v['pcnt_effective_weights'])
                   for k, v in metrics_opts[opt].items()]
 
-        for lr, step_ew in lrs_ew:
+        for i_lr, (lr, step_ew) in enumerate(lrs_ew):
             steps = [f"{v//1_000}k" for v in list(step_ew.keys())]
             ews = list(step_ew.values())
+            print(opt, lr, ews)
 
-            ax.plot(steps, ews, label=f"{lr}")
+            ax.plot(steps, ews, label=f"{lr}", color=colors[i_lr])
 
         # Formatting
         ax.set_title(f"{opt}", fontsize=10, fontweight='bold')
@@ -472,6 +485,7 @@ def main():
         ax.set_ylabel('Update step')
         ax.grid(True, alpha=0.9)
         ax.set_ylim(0, 1)
+        plt.legend()
 
         n_plots += 1
 
@@ -480,7 +494,7 @@ def main():
         axes[i].set_visible(False)
 
     # plt.tight_layout()
-    plt.legend()
+    #plt.legend()
 
     # Add main title AFTER tight_layout with proper positioning
     fig.suptitle(f'Effective weights', fontsize=16, fontweight='bold', y=0.98)
