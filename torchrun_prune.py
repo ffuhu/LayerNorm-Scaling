@@ -195,6 +195,9 @@ def main(args):
     # set saving dir
     # args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
     args.save_dir = f"{args.save_dir}/model_pruned_sparsity_{args.sparsity}"
+    if os.path.exists(args.save_dir):
+        print(f"Skipping already pruned model: {args.save_dir}")
+        exit(0)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)

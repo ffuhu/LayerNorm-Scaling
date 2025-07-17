@@ -375,7 +375,7 @@ def main(args):
                  lr=args.lr, weight_decay=args.weight_decay,
                  param_names=hidden_weights_names),
             dict(params=hidden_gains_biases + nonhidden_params, use_muon=False,
-                 lr=1e-3, betas=(0.98, 0.95), weight_decay=0.1,
+                 lr=1e-3, betas=(0.95, 0.95), weight_decay=0.1,
                  param_names=hidden_gains_biases_names + nonhidden_params_names),
         ]
         optimizer = SingleDeviceMuonWithAuxAdam(param_groups,
