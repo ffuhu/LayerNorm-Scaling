@@ -42,8 +42,8 @@ num_training_steps=160000
 warmup_steps=2000
 #batch_size=32
 #total_batch_size=64
-beta1=0.98
-beta2=0.999
+beta1=0.95
+beta2=0.95
 momentum=0.98
 case "$SLURM_ARRAY_TASK_ID" in
   # grid search sgd and adam
@@ -216,7 +216,7 @@ conda run -n cod torchrun --nproc_per_node 1 --master_port=$master_port torchrun
     --save_every 10000 \
     --optimizer $optimizer \
     --beta1 $beta1 \
-    ..beta2 $beta2 \
+    --beta2 $beta2 \
     --momentum $momentum \
     --weight_decay $weight_decay \
     --grad_clipping 0.0 \
@@ -237,7 +237,7 @@ echo "conda run -n cod torchrun --nproc_per_node 1 --master_port=$master_port to
     --save_every 10000 \
     --optimizer $optimizer \
     --beta1 $beta1 \
-    ..beta2 $beta2 \
+    --beta2 $beta2 \
     --momentum $momentum \
     --weight_decay $weight_decay \
     --grad_clipping 0.0 \
