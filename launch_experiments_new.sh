@@ -84,7 +84,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     # warmup_steps=2000
     ;;
   54)
-    optimizer="adam"
+    optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     batch_size=64
@@ -93,7 +93,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     # warmup_steps=2000
     ;;
   55)
-    optimizer="adam"
+    optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     batch_size=32
@@ -102,7 +102,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     # warmup_steps=2000
     ;;
   56)
-    optimizer="adam"
+    optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     batch_size=16
@@ -111,7 +111,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     # warmup_steps=2000
     ;;
   57)
-    optimizer="adam"
+    optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     batch_size=8
@@ -156,7 +156,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     # warmup_steps=2000
     ;;
   64)
-    optimizer="adam"
+    optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     batch_size=512
@@ -165,7 +165,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     # warmup_steps=2000
     ;;
   65)
-    optimizer="adam"
+    optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     batch_size=512
@@ -174,7 +174,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     # warmup_steps=2000
     ;;
   66)
-    optimizer="adam"
+    optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     batch_size=256
@@ -183,7 +183,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     # warmup_steps=2000
     ;;
   67)
-    optimizer="adam"
+    optimizer="adamw"
     weight_decay=0.1
     learning_rate=3e-3
     batch_size=128
