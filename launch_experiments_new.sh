@@ -38,123 +38,159 @@ master_port=$((29500+SLURM_ARRAY_TASK_ID))
 export MASTER_PORT=$master_port
 echo "Master port: $MASTER_PORT"
 
-
-batch_size=32
-total_batch_size=64
+num_training_steps=160000
+warmup_steps=2000
+#batch_size=32
+#total_batch_size=64
 beta1=0.98
 beta2=0.999
 momentum=0.98
 case "$SLURM_ARRAY_TASK_ID" in
-  1)
-    optimizer="adamw"
-    weight_decay=0.1
-    learning_rate=1e-4
-    ;;
-  2)
-    optimizer="adamw"
-    weight_decay=0.1
-    learning_rate=1e-3
-    ;;
-  3)
-    optimizer="adamw"
-    weight_decay=0.1
-    learning_rate=1e-2
-    ;;
-  4)
-    optimizer="adamw"
-    weight_decay=0.1
-    learning_rate=1e-1
-    ;;
-  5)
-    optimizer="adam_mini"
-    weight_decay=0.1
-    learning_rate=1e-4
-    ;;
-  6)
-    optimizer="adam_mini"
-    weight_decay=0.1
-    learning_rate=1e-3
-    ;;
-  7)
-    optimizer="adam_mini"
-    weight_decay=0.1
-    learning_rate=1e-2
-    ;;
-  8)
-    optimizer="adam_mini"
-    weight_decay=0.1
-    learning_rate=1e-1
-    ;;
-  9)
-    optimizer="sgd"
-    weight_decay=0.0005
-    learning_rate=1e-4
-    ;;
-  10)
-    optimizer="sgd"
-    weight_decay=0.0005
-    learning_rate=1e-3
-    ;;
-  11)
-    optimizer="sgd"
-    weight_decay=0.0005
-    learning_rate=1e-2
-    ;;
-  12)
-    optimizer="sgd"
-    weight_decay=0.0005
-    learning_rate=1e-1
-    ;;
-  13)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=1e-4
-    ;;
-  14)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=1e-3
-    ;;
-  15)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=1e-2
-    ;;
-  16)
-    optimizer="soap"
-    weight_decay=0.1
-    learning_rate=1e-1
-    ;;
   # grid search sgd and adam
   50)
     optimizer="sgd"
     weight_decay=0.0005
     learning_rate=1e-1
-    batch_size=16
-    total_batch_size=32
+    batch_size=64
+    total_batch_size=64
+    # num_training_steps=40000
+    # warmup_steps=2000
     ;;
   51)
     optimizer="sgd"
     weight_decay=0.0005
     learning_rate=1e-1
-    batch_size=8
-    total_batch_size=16
+    batch_size=32
+    total_batch_size=32
+    # num_training_steps=80000
+    # warmup_steps=2000
     ;;
   52)
     optimizer="sgd"
     weight_decay=0.0005
     learning_rate=1e-1
-    batch_size=4
-    total_batch_size=8
+    batch_size=16
+    total_batch_size=16
+    # num_training_steps=160000
+    # warmup_steps=2000
     ;;
   53)
     optimizer="sgd"
     weight_decay=0.0005
     learning_rate=1e-1
-    batch_size=1
-    total_batch_size=2
+    batch_size=8
+    total_batch_size=8
+    # num_training_steps=320000
+    # warmup_steps=2000
     ;;
-
+  54)
+    optimizer="adam"
+    weight_decay=0.1
+    learning_rate=3e-3
+    batch_size=64
+    total_batch_size=64
+    # num_training_steps=40000
+    # warmup_steps=2000
+    ;;
+  55)
+    optimizer="adam"
+    weight_decay=0.1
+    learning_rate=3e-3
+    batch_size=32
+    total_batch_size=32
+    # num_training_steps=80000
+    # warmup_steps=2000
+    ;;
+  56)
+    optimizer="adam"
+    weight_decay=0.1
+    learning_rate=3e-3
+    batch_size=16
+    total_batch_size=16
+    # num_training_steps=160000
+    # warmup_steps=2000
+    ;;
+  57)
+    optimizer="adam"
+    weight_decay=0.1
+    learning_rate=3e-3
+    batch_size=8
+    total_batch_size=8
+    # num_training_steps=320000
+    # warmup_steps=2000
+    ;;
+  60)
+    optimizer="sgd"
+    weight_decay=0.0005
+    learning_rate=1e-1
+    batch_size=512
+    total_batch_size=1024
+    # num_training_steps=40000
+    # warmup_steps=2000
+    ;;
+  61)
+    optimizer="sgd"
+    weight_decay=0.0005
+    learning_rate=1e-1
+    batch_size=512
+    total_batch_size=512
+    # num_training_steps=80000
+    # warmup_steps=2000
+    ;;
+  62)
+    optimizer="sgd"
+    weight_decay=0.0005
+    learning_rate=1e-1
+    batch_size=256
+    total_batch_size=256
+    # num_training_steps=160000
+    # warmup_steps=2000
+    ;;
+  63)
+    optimizer="sgd"
+    weight_decay=0.0005
+    learning_rate=1e-1
+    batch_size=128
+    total_batch_size=128
+    # num_training_steps=320000
+    # warmup_steps=2000
+    ;;
+  64)
+    optimizer="adam"
+    weight_decay=0.1
+    learning_rate=3e-3
+    batch_size=512
+    total_batch_size=1024
+    # num_training_steps=2500
+    # warmup_steps=2000
+    ;;
+  65)
+    optimizer="adam"
+    weight_decay=0.1
+    learning_rate=3e-3
+    batch_size=512
+    total_batch_size=512
+    # num_training_steps=80000
+    # warmup_steps=2000
+    ;;
+  66)
+    optimizer="adam"
+    weight_decay=0.1
+    learning_rate=3e-3
+    batch_size=256
+    total_batch_size=256
+    # num_training_steps=160000
+    # warmup_steps=2000
+    ;;
+  67)
+    optimizer="adam"
+    weight_decay=0.1
+    learning_rate=3e-3
+    batch_size=128
+    total_batch_size=128
+    # num_training_steps=320000
+    # warmup_steps=2000
+    ;;
   *)
     echo "Number not recognized. Please enter 1-16."
     exit
@@ -171,37 +207,41 @@ echo "Training with $optimizer (learning rate: $learning_rate, weight decay: $we
 conda run -n cod torchrun --nproc_per_node 1 --master_port=$master_port torchrun_main.py \
     --model_config configs/llama_130m.json \
     --lr $learning_rate \
-    --batch_size 32 \
-    --total_batch_size 64 \
-    --num_training_steps 160000 \
-    --warmup_steps 2000 \
+    --batch_size $batch_size \
+    --total_batch_size $total_batch_size \
+    --num_training_steps $num_training_steps \
+    --warmup_steps $warmup_steps \
     --dtype bfloat16 \
     --eval_every 10000 \
     --save_every 10000 \
     --optimizer $optimizer \
-    --beta1 0.98 \
+    --beta1 $beta1 \
+    ..beta2 $beta2 \
+    --momentum $momentum \
     --weight_decay $weight_decay \
     --grad_clipping 0.0 \
-    --run_name "ew_130m_save0-5-11_${norm_type}" \
+    --run_name "gs_ew_130m_save0-5-11_${norm_type}" \
     --save_dir "logs" \
     --layers_to_save layers.0 layers.5 layers.11 \
     --save_every_N_steps 10
 
-echo "run -n cod torchrun --nproc_per_node 1 --master_port=$master_port torchrun_main.py \
+echo "conda run -n cod torchrun --nproc_per_node 1 --master_port=$master_port torchrun_main.py \
     --model_config configs/llama_130m.json \
     --lr $learning_rate \
-    --batch_size 32 \
-    --total_batch_size 64 \
-    --num_training_steps 160000 \
-    --warmup_steps 2000 \
+    --batch_size $batch_size \
+    --total_batch_size $total_batch_size \
+    --num_training_steps $num_training_steps \
+    --warmup_steps $warmup_steps \
     --dtype bfloat16 \
     --eval_every 10000 \
     --save_every 10000 \
     --optimizer $optimizer \
-    --beta1 0.98 \
+    --beta1 $beta1 \
+    ..beta2 $beta2 \
+    --momentum $momentum \
     --weight_decay $weight_decay \
     --grad_clipping 0.0 \
-    --run_name "ew_130m_save0-5-11_${norm_type}" \
+    --run_name "gs_ew_130m_save0-5-11_${norm_type}" \
     --save_dir "logs" \
     --layers_to_save layers.0 layers.5 layers.11 \
-    --save_every_N_steps 10 "
+    --save_every_N_steps 10"

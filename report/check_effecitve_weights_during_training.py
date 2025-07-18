@@ -307,6 +307,7 @@ def compute_weight_distributions(model, checkpoint_path):
         ax.set_xlabel('Weight Value')
         ax.set_ylabel('Frequency')
         ax.grid(True, alpha=0.9)
+        ax.set_yscale('log')
 
         # Add statistics as text
         mean_val = np.mean(weights)
@@ -328,7 +329,7 @@ def compute_weight_distributions(model, checkpoint_path):
 
     # Adjust layout to make room for the title
     plt.subplots_adjust(top=0.94)
-    # plt.show()
+    plt.show()
     plt.savefig(exp_name + f'_weight_dist_withwd.png')
     plt.close()
 
