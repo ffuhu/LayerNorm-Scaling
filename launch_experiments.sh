@@ -38,11 +38,11 @@ master_port=$((29500+SLURM_ARRAY_TASK_ID))
 export MASTER_PORT=$master_port
 echo "Master port: $MASTER_PORT"
 
-
+seed=1
 batch_size=32
 total_batch_size=64
-beta1=0.98
-beta2=0.999
+beta1=0.95
+beta2=0.95
 momentum=0.98
 case "$SLURM_ARRAY_TASK_ID" in
   1)
@@ -129,6 +129,7 @@ case "$SLURM_ARRAY_TASK_ID" in
     optimizer="adamw"
     weight_decay=0.1
     learning_rate=1e-1
+    seed=42
     ;;
   21)
     optimizer="adamw"
@@ -269,7 +270,8 @@ conda run -n cod torchrun --nproc_per_node 1 --master_port=$master_port torchrun
     --run_name "ew_130m_save0-5-11_${norm_type}" \
     --save_dir "logs" \
     --layers_to_save layers.0 layers.5 layers.11 \
-    --save_every_N_steps 10
+    --save_every_N_steps 10 \
+    --seed $seed
 
 echo "run -n cod torchrun --nproc_per_node 1 --master_port=$master_port torchrun_main.py \
     --model_config configs/llama_130m.json \
