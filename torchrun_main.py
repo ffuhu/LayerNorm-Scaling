@@ -151,7 +151,8 @@ def evaluate_model(model, preprocess_batched, pad_idx, global_rank, world_size, 
 def main(args):
 
     # set saving dir
-    args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_seed{args.seed}")
+    args.save_dir = os.path.join(args.save_dir, f"{args.run_name}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}"
+                                                f"_seed{args.seed}_bs{args.batch_size}_tbs{args.total_batch_size}")
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
