@@ -221,7 +221,7 @@ conda run -n cod torchrun --nproc_per_node 1 --master_port=$master_port torchrun
     --weight_decay $weight_decay \
     --grad_clipping 0.0 \
     --run_name "gs_ew_130m_save0-5-11_${norm_type}" \
-    --save_dir "logs" \
+    --save_dir "logs_gs" \
     --layers_to_save layers.0 layers.5 layers.11 \
     --save_every_N_steps 10
 
@@ -242,6 +242,6 @@ echo "conda run -n cod torchrun --nproc_per_node 1 --master_port=$master_port to
     --weight_decay $weight_decay \
     --grad_clipping 0.0 \
     --run_name "gs_ew_130m_save0-5-11_${norm_type}" \
-    --save_dir "logs" \
+    --save_dir "logs_gs" \
     --layers_to_save layers.0 layers.5 layers.11 \
     --save_every_N_steps 10"
